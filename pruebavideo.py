@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
-import matplotlib as mp
 
+#Prueba de programa de video
 font=cv2.FONT_HERSHEY_SIMPLEX
 limitemenor= [35, 25, 35]
 limitemayor= [85, 255, 255]
