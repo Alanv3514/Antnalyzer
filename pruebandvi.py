@@ -13,7 +13,7 @@ def display(image, image_name):
     cv2.namedWindow(image_name)
     cv2.imshow(image_name, image)
     cv2.waitKey(0)
-    cv2.destroyAllWindows()
+     cv2.destroyAllWindows()
 
 def contrast_stretch(im):
     in_min = np.percentile(im, 5)
