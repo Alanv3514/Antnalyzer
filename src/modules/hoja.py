@@ -2,7 +2,7 @@
 """
 Created on Wed Jan 17 20:11:16 2024
 
-@author: Desubicada
+@author: Vinzon Eric - Quiroga Agustin
 """
 import cv2
 import math

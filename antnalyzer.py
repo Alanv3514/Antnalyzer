@@ -23,6 +23,7 @@ from src.modules.hoja import Hoja, posicion, comparar, Aparicion, xycentro, xypr
 from src.modules.ToolTip import *
 from src.modules.KalmanFilter import KalmanFilter
 
+#Defino la variable global
 class VGlobals:
     def __init__(self):
         self.PASSES=None
