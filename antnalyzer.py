@@ -31,7 +31,7 @@ class VGlobals:
 gv=VGlobals()
 
 
-class Configuracion:    
+class Configuracion:    #Clase de configuracion
     def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo):
         self.fecha = fecha
         self.hora = hora
