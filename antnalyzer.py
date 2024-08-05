@@ -87,6 +87,7 @@ def seleccionar_carpeta():
     carpeta = fd.askdirectory()
     if carpeta:
         gv.carpeta_seleccionada = carpeta
+        botonok.config(state="normal")
 
 def iniciar():
     global gv
@@ -96,13 +97,13 @@ def iniciar():
     gv.hojas.clear()
     
     
-    gv.archi1 = open(os.path.join(gv.carpeta_seleccionada +"/salidas", "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2 = open(os.path.join(gv.carpeta_seleccionada+"/salidas", "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
+    gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
+    gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2.write("Cant Hojas|Mediana|Percentil 25| Percentil 75| Hora\n")
     
     gv.ID=-1
     # Elegimos la camara
-    gv.model = YOLO("100_372.pt")
+    gv.model = YOLO("src/models_data/100_372.pt")
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
@@ -169,8 +170,9 @@ def capturar():
             cv2.imwrite(next_name, img)
             
 def base_blanca():  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
-    global gv, bb
+    global gv, bb, primera
     bb=True
+    primera = True
     gv.paused=True
     pausa.config(image = imagenBI)
     text4.config(text="Esperando area de detección")
@@ -189,8 +191,10 @@ def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cam
     gv.paused=False
     
 def habilitar_seleccion():
-    global seleccion_entrada_habilitada
-    seleccion_entrada_habilitada = True
+    global gv, seleccion_entrada_habilitada, primera
+    primera = True
+    pausa.config(image = imagenBI)
+    seleccion_entrada_habilitada = not seleccion_entrada_habilitada
     gv.paused=True
     visualizar()
 
@@ -223,16 +227,14 @@ def finalizar():
 def clicks():
     global gv, bb, seleccion_entrada_habilitada, click_count
     if click_count==2:
-        if bb == True:    # Si el flag de que todavia no fue seleccionada la base es True, lo que hace es llamar a la funcion
+        if bb == True and seleccion_entrada_habilitada==False:    # Si el flag de que todavia no fue seleccionada la base es True, lo que hace es llamar a la funcion
             base_blanca_aux(gv.point1, gv.point2)
             bb = False # Despues cambiamos el flag para que los proximos dos puntos sean para seleccionar la conversion.
-        elif seleccion_entrada_habilitada == True:  # Selección de puntos de entrada y salida
+        elif seleccion_entrada_habilitada == True and bb == False:  # Selección de puntos de entrada y salida
             gv.entrada_coord = gv.point1
             gv.salida_coord = gv.point2
-            print(f"Punto de entrada seleccionado en: {gv.entrada_coord}")
-            print(f"Punto de salida seleccionado en: {gv.salida_coord}")
-            seleccion_entrada_habilitada = False  # Cambiar bandera para evitar múltiples selecciones
             gv.paused=False
+            seleccion_entrada_habilitada = not seleccion_entrada_habilitada  # Cambiar bandera para evitar múltiples selecciones   
         else:
             # Calculate distance between two points
             distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
@@ -243,6 +245,7 @@ def clicks():
         click_count = 0
         gv.point1 = None
         gv.point2 = None
+    return gv.paused
 
     
 
@@ -292,7 +295,7 @@ def visualizar():
         if gv.cap is not None:
             global configuracion
             # Read a frame from the video
-            clicks()
+            gv.paused=clicks()
             if gv.paused==False:
                 gv.frameactual+=1
                 success, img = gv.cap.read()
@@ -396,7 +399,6 @@ def visualizar():
                         gv.filename=gv.filenames[gv.filenames.index(gv.filename)+1]
                         gv.cap = cv2.VideoCapture(gv.filename)
                         visualizar()
-                # Check if two points have been clicked
 
             
 
@@ -446,7 +448,7 @@ click_count = 0
 gv.point1 = None
 gv.point2 = None
 gv.paused = False
-primera = True
+primera = False
 gv.entrada_coord = None
 gv.salida_coord = None
 seleccion_entrada_habilitada = False
@@ -527,7 +529,7 @@ text4 = Label(pestania2, text="Seleccione el area de detección", font=("Cambria
 text4.grid(row=3, column=1, padx=730, pady=10, sticky="w")
 text4.config(foreground='red')
 
-textdebug = Label(pestania2, text="Para degub", font=("Cambria bold", 14))
+textdebug = Label(pestania2, text="Para debug", font=("Cambria bold", 14))
 textdebug.grid(row=4, column=1, padx=730, pady=10, sticky="w")
 
 text6 = Label(pestania2, text="", font =("Cambria bold", 12))
@@ -692,7 +694,9 @@ selecq.grid(row=8, column=2, sticky=W, padx=5)
 crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
 
 
-botonok = Button(pestania1, text="Confirmar", command=guardar).grid(row=9, column=0, sticky=W)
+botonok = Button(pestania1, text="Confirmar", command=guardar)
+botonok.grid(row=9, column=0, sticky=W)
+botonok.config(state=DISABLED)
 
         
 def quit_1():   #Funcion que cierra la ventana principal
