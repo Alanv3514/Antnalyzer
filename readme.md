@@ -30,4 +30,4 @@ Luego de instalar Anaconda3 y haber reiniciado la pc:
 
 ## Ejecutable
 
-(Proximamente)
+https://github.com/Alanv3514/Antnalyzer/releases
