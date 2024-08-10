@@ -97,8 +97,8 @@ def iniciar():
     gv.hojas.clear()
     
     
-    gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
+    gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "salidas/datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
+    gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "salidas/intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2.write("Cant Hojas|Mediana|Percentil 25| Percentil 75| Hora\n")
     
     gv.ID=-1
@@ -147,13 +147,13 @@ def capturar():
         success, img = gv.cap.read()
         if success:
             # Crear la carpeta screenshots si no existe
-            if not os.path.exists("screenshots"):
-                os.makedirs("screenshots")
+            if not os.path.exists("salidas/screenshots"):
+                os.makedirs("salidas/screenshots")
             # Obtener el listado de archivos en la carpeta screenshots
-            files = os.listdir("screenshots")
+            files = os.listdir("salidas/screenshots")
             # Si no existen capturas, crear la primera
             if not files:
-                next_name = "screenshots/captura_1.png"
+                next_name = "salidas/screenshots/captura_1.png"
             else:
                 # Buscar el último archivo creado
                 print(files)
@@ -164,7 +164,7 @@ def capturar():
                 print(last_num)
                 # Generar el nombre de la siguiente captura
                 next_num = last_num + 1
-                next_name = f"screenshots/captura_{next_num}.png"
+                next_name = f"salidas/screenshots/captura_{next_num}.png"
                 print(next_name)
             # Guardar la captura con el nombre generado
             cv2.imwrite(next_name, img)
