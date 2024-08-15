@@ -97,8 +97,8 @@ def iniciar():
     gv.hojas.clear()
     
     
-    gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "salidas/datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "salidas/intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
+    gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
+    gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2.write("Cant Hojas|Mediana|Percentil 25| Percentil 75| Hora\n")
     
     gv.ID=-1
@@ -147,13 +147,13 @@ def capturar():
         success, img = gv.cap.read()
         if success:
             # Crear la carpeta screenshots si no existe
-            if not os.path.exists("salidas/screenshots"):
-                os.makedirs("salidas/screenshots")
+            if not os.path.exists("screenshots"):
+                os.makedirs("screenshots")
             # Obtener el listado de archivos en la carpeta screenshots
-            files = os.listdir("salidas/screenshots")
+            files = os.listdir("screenshots")
             # Si no existen capturas, crear la primera
             if not files:
-                next_name = "salidas/screenshots/captura_1.png"
+                next_name = "screenshots/captura_1.png"
             else:
                 # Buscar el último archivo creado
                 print(files)
@@ -164,7 +164,7 @@ def capturar():
                 print(last_num)
                 # Generar el nombre de la siguiente captura
                 next_num = last_num + 1
-                next_name = f"salidas/screenshots/captura_{next_num}.png"
+                next_name = f"screenshots/captura_{next_num}.png"
                 print(next_name)
             # Guardar la captura con el nombre generado
             cv2.imwrite(next_name, img)
@@ -223,7 +223,33 @@ def finalizar():
     gv.cap.release()
     cv2.destroyAllWindows()
     print("FIN")
-    
+  
+def detectar_direccion_entrada_salida(punto_entrada, punto_salida):
+    dx = punto_salida[0] - punto_entrada[0]
+    dy = punto_salida[1] - punto_entrada[1]
+
+    if abs(dx) > abs(dy):
+        if dx > 0:
+            return 'izquierda_a_derecha'  # Flujo horizontal, derecha
+        else:
+            return 'derecha_a_izquierda'  # Flujo horizontal, izquierda
+    else:
+        if dy > 0:
+            return 'arriba_a_abajo'  # Flujo vertical, hacia abajo
+        else:
+            return 'abajo_a_arriba'  # Flujo vertical, hacia arriba
+
+def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direccion de entrada->salida
+    if direccion == 'derecha_a_izquierda':
+        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    elif direccion == 'izquierda_a_derecha':
+        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_CLOCKWISE)
+    elif direccion == 'arriba_a_abajo':
+        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_180)
+    else:  # 'abajo_a_arriba'
+        imagen_rotada = imagen  # Ya está en la orientación deseada
+    return imagen_rotada
+  
 def clicks():
     global gv, bb, seleccion_entrada_habilitada, click_count
     if click_count==2:
@@ -233,6 +259,7 @@ def clicks():
         elif seleccion_entrada_habilitada == True and bb == False:  # Selección de puntos de entrada y salida
             gv.entrada_coord = gv.point1
             gv.salida_coord = gv.point2
+            gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
             gv.paused=False
             seleccion_entrada_habilitada = not seleccion_entrada_habilitada  # Cambiar bandera para evitar múltiples selecciones   
         else:
@@ -247,7 +274,7 @@ def clicks():
         gv.point2 = None
     return gv.paused
 
-    
+
 
 def escribirarchivo(hojas_final, hojas_final_sale, bandera):
     
@@ -303,6 +330,7 @@ def visualizar():
                     frame = img[gv.y1: gv.y2, gv.x1:gv.x2]
                     #dim=(640,640)
                     #frame = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA)
+                    frame = rotar_imagen(frame, gv.direccion)
                     # Run YOLOv8 inference on the frame
                     results = gv.model.predict(frame, conf=gv.configuracion.getconf())
                     # Visualize the results on the frame
@@ -451,6 +479,7 @@ gv.paused = False
 primera = False
 gv.entrada_coord = None
 gv.salida_coord = None
+gv.direccion= None
 seleccion_entrada_habilitada = False
 
 
