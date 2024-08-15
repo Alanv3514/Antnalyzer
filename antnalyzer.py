@@ -230,14 +230,14 @@ def detectar_direccion_entrada_salida(punto_entrada, punto_salida):
 
     if abs(dx) > abs(dy):
         if dx > 0:
-            return 'izquierda_a_derecha'  # Flujo horizontal, derecha
+            return 'izquierda_a_derecha'  # Horizontal de izquierda a derecha
         else:
-            return 'derecha_a_izquierda'  # Flujo horizontal, izquierda
+            return 'derecha_a_izquierda'  # Horizontal de derecha a izquierda
     else:
         if dy > 0:
-            return 'arriba_a_abajo'  # Flujo vertical, hacia abajo
+            return 'arriba_a_abajo'  # Vertical de arriba a abajo
         else:
-            return 'abajo_a_arriba'  # Flujo vertical, hacia arriba
+            return 'abajo_a_arriba'  # Vertical de abajo a arriba
 
 def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direccion de entrada->salida
     if direccion == 'derecha_a_izquierda':
