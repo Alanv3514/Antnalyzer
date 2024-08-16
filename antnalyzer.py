@@ -9,6 +9,7 @@ import random
 import datetime
 import tkinter as tk
 from tkinter import ttk
+import customtkinter as ctk
 from tkinter import *
 from tkinter import filedialog as fd
 from tkinter import messagebox as msg
@@ -488,263 +489,343 @@ seleccion_entrada_habilitada = False
 
 
 
-#Pantalla principal
-pantalla=Toplevel()
-pantalla.title("GUI | TKINTER | HOJAS")
-pantalla.geometry("1024x640")
+# Clase principal de la aplicación
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-
-#---------------------Configuracion de pestañas de la interfaz principal---------------------------
-pestanias = Notebook(pantalla)
-
-pestania1=Frame(pestanias)
-pestania2=Frame(pestanias)
-
-
-pestanias.add(pestania1, text="Init")
-pestanias.add(pestania2, text="Pantalla Video")
-
-
-pestanias.pack(expand=True, fill='both')
-
-
-# Fondo
-imagenF = PhotoImage(file="assets/Fondo.png")
-background = Label(image = imagenF, text = "Fondo")
-background.place(x = 0, y = 0, relwidth = 1, relheight = 1)
+        # Configuración de la ventana principal
+        self.title("GUI | CUSTOMTKINTER | HOJAS")
+        self.geometry("1024x640")
+        ctk.set_appearance_mode("dark")
+        
+        # Configuración de las pestañas
+        self.pestanias = MyTabView(master=self)
+        self.pestanias.pack(expand=True, fill='both')
+        
 
 
 
-#---------------------Configuracion de botones de la interfaz principal---------------------------
-# Iniciar Video
-imagenBA = PhotoImage(file="assets/Abrir.png")
-inicio = Button(pestania2, text="Iniciar",  command=iniciar)
-inicio.place(x = 100, y = 580)
+class MyTabView(ctk.CTkTabview):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
 
-# Pausar/Reanudar Video
-imagenBI = PhotoImage(file="assets/Inicio.png")
-imagenBF = PhotoImage(file="assets/Finalizar.png")
-pausa = Button(pestania2, text="Pausar",  command=on_pause)
-pausa.place(x = 180, y = 580)
-pausa.config(state="disabled")
+        # create tabs
+        self.add("Init")
+        self.add("Pantalla Video")
+        
 
-# Capturar Frame
-imagenBC = PhotoImage(file="assets/Capturar.png")
-captura = Button(pestania2, text="Capturar",  command=capturar)
-captura.place(x = 260, y = 580)
-captura.config(state="disabled")
+        # add widgets on tabs
+        self.tab("Init").configure(border_width=0)  # Opcional, para estandarizar el estilo
+        Tab1(self.tab("Init"))
 
-imagenBB = PhotoImage(file="assets/cuadrado.png")
-base_b = Button(pestania2, text="Cuadrado",  command=base_blanca)
-base_b.place(x = 340, y = 580)
-base_b.config(state="disabled")
+        self.tab("Pantalla Video").configure(border_width=0)  # Opcional
+        Tab2(self.tab("Pantalla Video"))
+        #self.label = ctk.CTkLabel(master=self.tab("Init"), text="Bienvenido a la pestaña 1")
+        #self.label.pack(padx=20, pady=20)
 
-boton_seleccion = tk.Button(pestania2, text="Selección de Entrada y Salida", command=habilitar_seleccion)
-boton_seleccion.place(x = 420, y = 580)
+# Clase para la primera pestaña
+class Tab1(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Configuración de los widgets de la pestaña 1
+        
+        imagenQ = ctk.CTkImage(light_image=ImgPIL.open('assets/interrogatorio_2.png'),
+                                     dark_image=ImgPIL.open('assets/interrogatorio_2.png'),
+                                     size=(16,16))
+        
+        self.fechastring = tk.StringVar(value="01-01-1970")
+        self.horastring = ctk.StringVar(value="00:00")
+        self.fpstring = ctk.IntVar(value=30)
+        self.fpsdisstring = ctk.IntVar(value=2)
+        self.fpsapastring = ctk.IntVar(value=15)
+        self.confstring = ctk.DoubleVar(value=0.6)
+        self.cantstring = ctk.IntVar(value=10)
+        self.tiemstring = ctk.DoubleVar(value=10)
+
+        # Funciones de validación
+        self.vcmd_int = (self.register(lambda P: self.callback('int', P)), '%P')
+        self.vcmd_float = (self.register(lambda P: self.callback('float', P)), '%P')
+        
+        
+        #Widgets de fecha
+        fechat = ctk.CTkLabel(self, text="Fecha:")
+        fechat.grid(row=0, column=0, sticky="w")
+        fecha = ctk.CTkEntry(self, textvariable=self.fechastring, width=150)
+        fecha.grid(row=0, column=1, sticky="w")
+        fechaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fechaq.grid(row=0, column=2, sticky="w", padx=5)
+
+        self.crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
+        
+        #Widget de hora
+        horat = ctk.CTkLabel(self, text="Hora:").grid(row=1, column=0, sticky=W)
+        hora = ctk.CTkEntry(self, textvariable = self.horastring, width=150).grid(row=1, column=1, sticky=W)
+        horaq = ctk.CTkButton(self,fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        horaq.grid(row=1, column=2, sticky=W, padx=5)
+        self.crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
+        
+        
+        self.pack(expand=True, fill='both')
+        
+    def msgBox():
+        msg.showerror('Error!', 'Error en los parametros de configuracion')
+    
+    def crear_toolTip(self, widget, text):
+        toolTip = ToolTip(widget)
+        def enter(event):
+            toolTip.show_tip(text)
+        def leave(event):
+            toolTip.hide_tip()
+        widget.bind('<Enter>', enter)
+        widget.bind('<Leave>', leave)
+        
+        def guardar():      #Guardamos en el objeto configuracion los valores ingresados en las entradas
+              global gv
+              h, m = horastring.get().split(':')
+              d = datetime.timedelta(hours=int(h), minutes=int(m))
+              if fpstring.get() == 0 or fpsdisstring.get()== 0 or confstring.get()==0 or confstring.get()>1 or cantstring.get()==0 or tiemstring.get()==0:
+                  msgBox()
+                  return 0
+             
+              print(d)
+              gv.configuracion = Configuracion(fechastring.get(), d, fpstring.get(),fpsdisstring.get(), fpsapastring.get(), confstring.get(), cantstring.get(), tiemstring.get())
+              pestanias.tab(1, state="normal")
+              pestanias.select(pestania2)
+
+
+        def validar_input(tipo, input):
+            if tipo == 'int':
+                return input.isdigit() or input == ""
+            elif tipo == 'float':
+                return input.replace('.', '', 1).isdigit() or input == ""    
+        
+        def callback(tipo, P):
+            return validar_input(tipo, P)
+        
+
+# Clase para la segunda pestaña
+class Tab2(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Configuración de los widgets de la pestaña 2
+
+        salir = ctk.CTkButton(self, hover=True, hover_color="#736bb0", text="Salir", command=quit_1)
+        salir.pack(side="bottom", padx=20, pady=20, anchor="e")
+        
+        # Botón "Iniciar"
+        inicio = ctk.CTkButton(self, text="Iniciar", command=iniciar)
+        inicio.pack(side="bottom", padx=20, pady=20, anchor="w")
+        
+        self.pack(expand=True, fill='both')
+        
+        
+
+# # Fondo
+# imagenF = PhotoImage(file="assets/Fondo.png")
+# background = Label(image = imagenF, text = "Fondo")
+# background.place(x = 0, y = 0, relwidth = 1, relheight = 1)
 
 
 
-#---------------------Configuracion de textos de la interfaz principal---------------------------
-text1 = Label(pestania2, text="Hoja "+str(gv.ID+1), font=("Cambria bold", 14))
-text1.grid(row=0, column=1, padx=730, pady=(200,10), sticky="w")
+# #---------------------Configuracion de botones de la interfaz principal---------------------------
+# # Iniciar Video
+# imagenBA = PhotoImage(file="assets/Abrir.png")
+# inicio = Button(pestania2, text="Iniciar",  command=iniciar)
+# inicio.place(x = 100, y = 580)
 
-text2 = Label(pestania2, text="Distancia de conversion: ", font=("Cambria bold", 14))
-text2.grid(row=1, column=1, padx=730, pady=10, sticky="w")
+# # Pausar/Reanudar Video
+# imagenBI = PhotoImage(file="assets/Inicio.png")
+# imagenBF = PhotoImage(file="assets/Finalizar.png")
+# pausa = Button(pestania2, text="Pausar",  command=on_pause)
+# pausa.place(x = 180, y = 580)
+# pausa.config(state="disabled")
 
-text3 = Label(pestania2, text="Area ", font=("Cambria bold", 14))
-text3.grid(row=2, column=1, padx=730, pady=10, sticky="w")
+# # Capturar Frame
+# imagenBC = PhotoImage(file="assets/Capturar.png")
+# captura = Button(pestania2, text="Capturar",  command=capturar)
+# captura.place(x = 260, y = 580)
+# captura.config(state="disabled")
 
-text4 = Label(pestania2, text="Seleccione el area de detección", font=("Cambria bold", 14))
-text4.grid(row=3, column=1, padx=730, pady=10, sticky="w")
-text4.config(foreground='red')
+# imagenBB = PhotoImage(file="assets/cuadrado.png")
+# base_b = Button(pestania2, text="Cuadrado",  command=base_blanca)
+# base_b.place(x = 340, y = 580)
+# base_b.config(state="disabled")
 
-textdebug = Label(pestania2, text="Para debug", font=("Cambria bold", 14))
-textdebug.grid(row=4, column=1, padx=730, pady=10, sticky="w")
-
-text6 = Label(pestania2, text="", font =("Cambria bold", 12))
-text6.place(x=720, y = 515)
-
-
-#---------------------Configuracion del video en la interfaz---------------------------
-lblVideo = Label(pestania2)
-lblVideo.place(x = 80, y = 30)
+# boton_seleccion = tk.Button(pestania2, text="Selección de Entrada y Salida", command=habilitar_seleccion)
+# boton_seleccion.place(x = 420, y = 580)
 
 
-lblVideoYOLO = Label(pestania2)
-lblVideoYOLO.place(x = 730, y = 30)
 
-pestanias.tab(1, state="disable")
-crear_barra_progreso()
+# #---------------------Configuracion de textos de la interfaz principal---------------------------
+# text1 = Label(pestania2, text="Hoja "+str(gv.ID+1), font=("Cambria bold", 14))
+# text1.grid(row=0, column=1, padx=730, pady=(200,10), sticky="w")
+
+# text2 = Label(pestania2, text="Distancia de conversion: ", font=("Cambria bold", 14))
+# text2.grid(row=1, column=1, padx=730, pady=10, sticky="w")
+
+# text3 = Label(pestania2, text="Area ", font=("Cambria bold", 14))
+# text3.grid(row=2, column=1, padx=730, pady=10, sticky="w")
+
+# text4 = Label(pestania2, text="Seleccione el area de detección", font=("Cambria bold", 14))
+# text4.grid(row=3, column=1, padx=730, pady=10, sticky="w")
+# text4.config(foreground='red')
+
+# textdebug = Label(pestania2, text="Para debug", font=("Cambria bold", 14))
+# textdebug.grid(row=4, column=1, padx=730, pady=10, sticky="w")
+
+# text6 = Label(pestania2, text="", font =("Cambria bold", 12))
+# text6.place(x=720, y = 515)
+
+
+# #---------------------Configuracion del video en la interfaz---------------------------
+# lblVideo = Label(pestania2)
+# lblVideo.place(x = 80, y = 30)
+
+
+# lblVideoYOLO = Label(pestania2)
+# lblVideoYOLO.place(x = 730, y = 30)
+
+# pestanias.tab(1, state="disable")
+# crear_barra_progreso()
 
 
   
 
-# Fecha
-# Hora
-# FPS
-# Frames de distancia
-# Cant frames sin aparicion
-# Confianza
-# Minima cantidad de apariciones
-# Tiempo de guardado
-
-def msgBox():
-    
-    msg.showerror('Error!', 'Error en los parametros de configuracion')
-    
-def crear_toolTip(widget, text):
-    toolTip = ToolTip(widget)
-    def enter(event):
-        toolTip.show_tip(text)
-    def leave(event):
-        toolTip.hide_tip()
-    widget.bind('<Enter>', enter)
-    widget.bind('<Leave>', leave)
-
-def guardar():      #Guardamos en el objeto configuracion los valores ingresados en las entradas
-     global gv
-     h, m = horastring.get().split(':')
-     d = datetime.timedelta(hours=int(h), minutes=int(m))
-     if fpstring.get() == 0 or fpsdisstring.get()== 0 or confstring.get()==0 or confstring.get()>1 or cantstring.get()==0 or tiemstring.get()==0:
-         msgBox()
-         return 0
-     
-     print(d)
-     gv.configuracion = Configuracion(fechastring.get(), d, fpstring.get(),fpsdisstring.get(), fpsapastring.get(), confstring.get(), cantstring.get(), tiemstring.get())
-     pestanias.tab(1, state="normal")
-     pestanias.select(pestania2)
-
-
-def validar_input(tipo, input):
-    if tipo == 'int':
-        return input.isdigit() or input == ""
-    elif tipo == 'float':
-        return input.replace('.', '', 1).isdigit() or input == ""    
-
-def callback(tipo, P):
-    return validar_input(tipo, P)
+# # Fecha
+# # Hora
+# # FPS
+# # Frames de distancia
+# # Cant frames sin aparicion
+# # Confianza
+# # Minima cantidad de apariciones
+# # Tiempo de guardado
 
 
 
-imagenQ = PhotoImage(file="assets/interrogatorio.png")
 
 
-#Configuracion del grid
-# Grid.rowconfigure(pestania1,0,weight=1)  #Configuramos el grid para ordenar los objetos dentro de la ventana
-# Grid.columnconfigure(pestania1,0,weight=1)
-
-# Grid.rowconfigure(pestania1,1,weight=1)
-
-fechastring=tk.StringVar()      #Configuramos el texto variable de cada entrada y lo seteamos a un valor por defecto
-fechastring.set("01-01-1970")
-
-horastring=tk.StringVar()
-horastring.set("00:00")
-
-fpstring=tk.IntVar()
-fpstring.set(30)
-
-fpsdisstring=tk.IntVar()
-fpsdisstring.set(2)
-
-fpsapastring=tk.IntVar()
-fpsapastring.set(15)
-
-confstring=tk.DoubleVar()
-confstring.set(0.6)
-
-cantstring=tk.IntVar()
-cantstring.set(10)
-
-tiemstring=tk.DoubleVar()
-tiemstring.set(10)
-
-#Funciones callback para restringir los tipos de datos de cada entrada y evitar errores del usuario
-vcmd_int = (pestania1.register(lambda P: callback('int', P)), '%P')
-vcmd_float = (pestania1.register(lambda P: callback('float', P)), '%P')
+# imagenQ = PhotoImage(file="assets/interrogatorio.png")
 
 
-fechat = Label(pestania1, text="Fecha:").grid(row=0, column=0, sticky=W) #Creamos el texto de cada entrada
-fecha = Entry(pestania1, textvariable = fechastring, width=10).grid(row=0, column=1, sticky=W)   #Creamos la entrada de cada variable
-fechaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fechaq.grid(row=0, column=2, sticky=W, padx=5)
-crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
+# #Configuracion del grid
+# # Grid.rowconfigure(pestania1,0,weight=1)  #Configuramos el grid para ordenar los objetos dentro de la ventana
+# # Grid.columnconfigure(pestania1,0,weight=1)
 
-horat = Label(pestania1, text="Hora:").grid(row=1, column=0, sticky=W)
-hora = Entry(pestania1, textvariable = horastring, width=10).grid(row=1, column=1, sticky=W)
-horaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-horaq.grid(row=1, column=2, sticky=W, padx=5)
-crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
+# # Grid.rowconfigure(pestania1,1,weight=1)
 
+# fechastring=tk.StringVar()      #Configuramos el texto variable de cada entrada y lo seteamos a un valor por defecto
+# fechastring.set("01-01-1970")
 
-fpst = Label(pestania1, text="FPS:").grid(row=2, column=0, sticky=W)
-FPS = Entry(pestania1, textvariable = fpstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=2, column=1, sticky=W)
-fpsq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fpsq.grid(row=2, column=2, sticky=W, padx=5)
-crear_toolTip(fpsq, 'FPS del vídeo')
+# horastring=tk.StringVar()
+# horastring.set("00:00")
 
+# fpstring=tk.IntVar()
+# fpstring.set(30)
 
-fpsdist = Label(pestania1, text="Distancia de Frames:").grid(row=3, column=0, sticky=W)
-fpsdis = Entry(pestania1, textvariable = fpsdisstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=3, column=1, sticky=W)
-fpsdisq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fpsdisq.grid(row=3, column=2, sticky=W, padx=5)
-crear_toolTip(fpsdisq, 'Distancia entre frames de detección, cuanto mayor sea este numero\nmas rapido será el procesamiento a cambio de un mayor error')
+# fpsdisstring=tk.IntVar()
+# fpsdisstring.set(2)
 
+# fpsapastring=tk.IntVar()
+# fpsapastring.set(15)
 
-fpsapat = Label(pestania1, text="Frames aparicion:").grid(row=4, column=0, sticky=W)
-fpsapa = Entry(pestania1, textvariable = fpsapastring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=4, column=1, sticky=W)
-fpsapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fpsapaq.grid(row=4, column=2, sticky=W, padx=5)
-crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección. Se recomienda no utilizar un valor mayor al de FPS')
+# confstring=tk.DoubleVar()
+# confstring.set(0.6)
 
+# cantstring=tk.IntVar()
+# cantstring.set(10)
 
-conft = Label(pestania1, text="Confianza: ").grid(row=5, column=0, sticky=W)
-conf = Entry(pestania1, textvariable = confstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=5, column=1, sticky=W)
-confq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-confq.grid(row=5, column=2, sticky=W, padx=5)
-crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos, pero se perderán detecciones')
+# tiemstring=tk.DoubleVar()
+# tiemstring.set(10)
 
-cantapat = Label(pestania1, text="Cantidad de apariciones:").grid(row=6, column=0, sticky=W)
-cantapa = Entry(pestania1, textvariable = cantstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=6, column=1, sticky=W)
-cantapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-cantapaq.grid(row=6, column=2, sticky=W, padx=5)
-crear_toolTip(cantapaq, 'Cantidad de apariciones minimas necesarias para dar por positiva la completa detección')
-
-tiemt = Label(pestania1, text="Tiempo de guardado:").grid(row=7, column=0, sticky=W)
-tiem = Entry(pestania1, textvariable = tiemstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=7, column=1, sticky=W)
-tiemq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-tiemq.grid(row=7, column=2, sticky=W, padx=5)
-crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
-
-select = Label(pestania1, text="Carpeta de guardado").grid(row=8, column=0, sticky=W)
-boton_seleccionar_carpeta = Button(pestania1, text="Seleccionar Carpeta", command=seleccionar_carpeta).grid(row=8, column=1, sticky=W)
-selecq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-selecq.grid(row=8, column=2, sticky=W, padx=5)
-crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
+# #Funciones callback para restringir los tipos de datos de cada entrada y evitar errores del usuario
+# vcmd_int = (pestania1.register(lambda P: callback('int', P)), '%P')
+# vcmd_float = (pestania1.register(lambda P: callback('float', P)), '%P')
 
 
-botonok = Button(pestania1, text="Confirmar", command=guardar)
-botonok.grid(row=9, column=0, sticky=W)
-botonok.config(state=DISABLED)
+# fechat = Label(pestania1, text="Fecha:").grid(row=0, column=0, sticky=W) #Creamos el texto de cada entrada
+# fecha = Entry(pestania1, textvariable = fechastring, width=10).grid(row=0, column=1, sticky=W)   #Creamos la entrada de cada variable
+# fechaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# fechaq.grid(row=0, column=2, sticky=W, padx=5)
+# crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
+
+# horat = Label(pestania1, text="Hora:").grid(row=1, column=0, sticky=W)
+# hora = Entry(pestania1, textvariable = horastring, width=10).grid(row=1, column=1, sticky=W)
+# horaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# horaq.grid(row=1, column=2, sticky=W, padx=5)
+# crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
+
+
+# fpst = Label(pestania1, text="FPS:").grid(row=2, column=0, sticky=W)
+# FPS = Entry(pestania1, textvariable = fpstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=2, column=1, sticky=W)
+# fpsq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# fpsq.grid(row=2, column=2, sticky=W, padx=5)
+# crear_toolTip(fpsq, 'FPS del vídeo')
+
+
+# fpsdist = Label(pestania1, text="Distancia de Frames:").grid(row=3, column=0, sticky=W)
+# fpsdis = Entry(pestania1, textvariable = fpsdisstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=3, column=1, sticky=W)
+# fpsdisq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# fpsdisq.grid(row=3, column=2, sticky=W, padx=5)
+# crear_toolTip(fpsdisq, 'Distancia entre frames de detección, cuanto mayor sea este numero\nmas rapido será el procesamiento a cambio de un mayor error')
+
+
+# fpsapat = Label(pestania1, text="Frames aparicion:").grid(row=4, column=0, sticky=W)
+# fpsapa = Entry(pestania1, textvariable = fpsapastring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=4, column=1, sticky=W)
+# fpsapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# fpsapaq.grid(row=4, column=2, sticky=W, padx=5)
+# crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección. Se recomienda no utilizar un valor mayor al de FPS')
+
+
+# conft = Label(pestania1, text="Confianza: ").grid(row=5, column=0, sticky=W)
+# conf = Entry(pestania1, textvariable = confstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=5, column=1, sticky=W)
+# confq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# confq.grid(row=5, column=2, sticky=W, padx=5)
+# crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos, pero se perderán detecciones')
+
+# cantapat = Label(pestania1, text="Cantidad de apariciones:").grid(row=6, column=0, sticky=W)
+# cantapa = Entry(pestania1, textvariable = cantstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=6, column=1, sticky=W)
+# cantapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# cantapaq.grid(row=6, column=2, sticky=W, padx=5)
+# crear_toolTip(cantapaq, 'Cantidad de apariciones minimas necesarias para dar por positiva la completa detección')
+
+# tiemt = Label(pestania1, text="Tiempo de guardado:").grid(row=7, column=0, sticky=W)
+# tiem = Entry(pestania1, textvariable = tiemstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=7, column=1, sticky=W)
+# tiemq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# tiemq.grid(row=7, column=2, sticky=W, padx=5)
+# crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
+
+# select = Label(pestania1, text="Carpeta de guardado").grid(row=8, column=0, sticky=W)
+# boton_seleccionar_carpeta = Button(pestania1, text="Seleccionar Carpeta", command=seleccionar_carpeta).grid(row=8, column=1, sticky=W)
+# selecq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
+# selecq.grid(row=8, column=2, sticky=W, padx=5)
+# crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
+
+
+# botonok = Button(pestania1, text="Confirmar", command=guardar)
+# botonok.grid(row=9, column=0, sticky=W)
+# botonok.config(state=DISABLED)
 
         
 def quit_1():   #Funcion que cierra la ventana principal
-    #finalizar()
-    pantalla.destroy()
-    pantalla.quit()
-    #exit()
+#     #finalizar()
+     app.destroy()
+     app.quit()
+     #exit()
     
 
-imagenS = PhotoImage(file="assets/salida.png")
-salir = Button(pantalla, text="Salir", command=quit_1)
-salir.place(x = 980, y = 600)
+# imagenS = PhotoImage(file="assets/salida.png")
+# salir = Button(pantalla, text="Salir", command=quit_1)
+# salir.place(x = 980, y = 600)
 
-#Evento de click
-lblVideo.bind("<Button-1>", on_click)
+# #Evento de click
+# lblVideo.bind("<Button-1>", on_click)
 
 # Bucle de ejecucion de la ventana.
-pantalla.mainloop()
-
+app = App()
+app.mainloop()
 
 # Release the video capture object and close the display window
 gv.cap.release()
