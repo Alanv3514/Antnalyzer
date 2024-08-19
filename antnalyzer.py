@@ -84,11 +84,11 @@ def calculararea(hojas_final):
     return area
 
 
-def seleccionar_carpeta():
+def seleccionar_carpeta(tab_instance):
     carpeta = fd.askdirectory()
     if carpeta:
         gv.carpeta_seleccionada = carpeta
-        botonok.config(state="normal")
+        tab_instance.cambiar_estado()
 
 def iniciar():
     global gv
@@ -508,29 +508,35 @@ class App(ctk.CTk):
 
 class MyTabView(ctk.CTkTabview):
     def __init__(self, master, **kwargs):
-        super().__init__(master, **kwargs)
+        super().__init__(master, anchor="w", **kwargs)
 
-        # create tabs
+        #Creamos las pestañas
+        self.configure(state="disabled")
         self.add("Init")
         self.add("Pantalla Video")
         
 
         # add widgets on tabs
         self.tab("Init").configure(border_width=0)  # Opcional, para estandarizar el estilo
-        Tab1(self.tab("Init"))
+        Tab1(self.tab("Init"), parent=self)
 
         self.tab("Pantalla Video").configure(border_width=0)  # Opcional
         Tab2(self.tab("Pantalla Video"))
         #self.label = ctk.CTkLabel(master=self.tab("Init"), text="Bienvenido a la pestaña 1")
         #self.label.pack(padx=20, pady=20)
 
+    def habilitar_tabs(self):
+        self.configure(state="normal")
+
+    def siguiente(self, nombre_pest):
+        self.set(nombre_pest)
+
 # Clase para la primera pestaña
 class Tab1(ctk.CTkFrame):
-    def __init__(self, master):
+    def __init__(self, master, parent=None):
         super().__init__(master)
-        
         # Configuración de los widgets de la pestaña 1
-        
+        self.parent=parent
         imagenQ = ctk.CTkImage(light_image=ImgPIL.open('assets/interrogatorio_2.png'),
                                      dark_image=ImgPIL.open('assets/interrogatorio_2.png'),
                                      size=(16,16))
@@ -565,10 +571,65 @@ class Tab1(ctk.CTkFrame):
         horaq = ctk.CTkButton(self,fg_color="transparent", image=imagenQ, text="", height=16, width=16)
         horaq.grid(row=1, column=2, sticky=W, padx=5)
         self.crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
+
+        fpst = ctk.CTkLabel(self, text="FPS:").grid(row=2, column=0, sticky="w")
+        FPS = ctk.CTkEntry(self, textvariable=self.fpstring, width=150, validatecommand=self.vcmd_int)
+        FPS.grid(row=2, column=1, sticky="w")
+        fpsq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fpsq.grid(row=2, column=2, sticky="w", padx=5)
+        self.crear_toolTip(fpsq, 'FPS del vídeo')
         
-        
+        fpsdist = ctk.CTkLabel(self, text="Distancia de Frames:").grid(row=3, column=0, sticky="w")
+        fpsdis = ctk.CTkEntry(self, textvariable=self.fpsdisstring, width=150, validate="key", validatecommand=self.vcmd_int)
+        fpsdis.grid(row=3, column=1, sticky="w")
+        fpsdisq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fpsdisq.grid(row=3, column=2, sticky="w", padx=5)
+        self.crear_toolTip(fpsdisq, 'Distancia entre frames de detección, cuanto mayor sea este numero\nmas rapido será el procesamiento a cambio de un mayor error')
+
+        fpsapat = ctk.CTkLabel(self, text="Frames aparición:").grid(row=4, column=0, sticky="w")
+        fpsapa = ctk.CTkEntry(self, textvariable=self.fpsapastring, width=150, validate="key", validatecommand=self.vcmd_int)
+        fpsapa.grid(row=4, column=1, sticky="w")
+        fpsapaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fpsapaq.grid(row=4, column=2, sticky="w", padx=5)
+        self.crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección. Se recomienda no utilizar un valor mayor al de FPS')
+
+        conft = ctk.CTkLabel(self, text="Confianza:").grid(row=5, column=0, sticky="w")
+        conf = ctk.CTkEntry(self, textvariable=self.confstring, width=150, validate="key", validatecommand=self.vcmd_float)
+        conf.grid(row=5, column=1, sticky="w")
+        confq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        confq.grid(row=5, column=2, sticky="w", padx=5)
+        self.crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos, pero se perderán detecciones')
+
+        cantapat = ctk.CTkLabel(self, text="Cantidad de apariciones:").grid(row=6, column=0, sticky="w")
+        cantapa = ctk.CTkEntry(self, textvariable=self.cantstring, width=150, validate="key", validatecommand=self.vcmd_int)
+        cantapa.grid(row=6, column=1, sticky="w")
+        cantapaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        cantapaq.grid(row=6, column=2, sticky="w", padx=5)
+        self.crear_toolTip(cantapaq, 'Cantidad de apariciones mínimas necesarias para dar por positiva la completa detección')
+
+        tiemt = ctk.CTkLabel(self, text="Tiempo de guardado:").grid(row=7, column=0, sticky="w")
+        tiem = ctk.CTkEntry(self, textvariable=self.tiemstring, width=150, validate="key", validatecommand=self.vcmd_float)
+        tiem.grid(row=7, column=1, sticky="w")
+        tiemq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        tiemq.grid(row=7, column=2, sticky="w", padx=5)
+        self.crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
+
+        select = ctk.CTkLabel(self, text="Carpeta de guardado").grid(row=8, column=0, sticky="w")
+        boton_seleccionar_carpeta = ctk.CTkButton(self, text="Seleccionar Carpeta", command=lambda: seleccionar_carpeta(self))
+        boton_seleccionar_carpeta.grid(row=8, column=1, sticky="w")
+        selecq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        selecq.grid(row=8, column=2, sticky="w", padx=5)
+        self.crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
+
+        self.botonok = ctk.CTkButton(self, text="Confirmar", command=self.guardar)
+        self.botonok.grid(row=9, column=0, sticky=W)
+        self.botonok.configure(state="disabled")
+
         self.pack(expand=True, fill='both')
-        
+
+    def cambiar_estado(self):
+        self.botonok.configure(state="normal")
+    
     def msgBox():
         msg.showerror('Error!', 'Error en los parametros de configuracion')
     
@@ -581,29 +642,29 @@ class Tab1(ctk.CTkFrame):
         widget.bind('<Enter>', enter)
         widget.bind('<Leave>', leave)
         
-        def guardar():      #Guardamos en el objeto configuracion los valores ingresados en las entradas
-              global gv
-              h, m = horastring.get().split(':')
-              d = datetime.timedelta(hours=int(h), minutes=int(m))
-              if fpstring.get() == 0 or fpsdisstring.get()== 0 or confstring.get()==0 or confstring.get()>1 or cantstring.get()==0 or tiemstring.get()==0:
-                  msgBox()
-                  return 0
-             
-              print(d)
-              gv.configuracion = Configuracion(fechastring.get(), d, fpstring.get(),fpsdisstring.get(), fpsapastring.get(), confstring.get(), cantstring.get(), tiemstring.get())
-              pestanias.tab(1, state="normal")
-              pestanias.select(pestania2)
+    def guardar(self):      #Guardamos en el objeto configuracion los valores ingresados en las entradas
+            global gv
+            h, m = self.horastring.get().split(':')
+            d = datetime.timedelta(hours=int(h), minutes=int(m))
+            if self.fpstring.get() == 0 or self.fpsdisstring.get()== 0 or self.confstring.get()==0 or self.confstring.get()>1 or self.cantstring.get()==0 or self.tiemstring.get()==0:
+                self.msgBox()
+                return 0
+            
+            print(d)
+            gv.configuracion = Configuracion(self.fechastring.get(), d, self.fpstring.get(),self.fpsdisstring.get(), self.fpsapastring.get(), self.confstring.get(), self.cantstring.get(), self.tiemstring.get())
+            self.parent.habilitar_tabs()
+            self.parent.siguiente("Pantalla Video")
 
 
-        def validar_input(tipo, input):
-            if tipo == 'int':
-                return input.isdigit() or input == ""
-            elif tipo == 'float':
-                return input.replace('.', '', 1).isdigit() or input == ""    
-        
-        def callback(tipo, P):
-            return validar_input(tipo, P)
-        
+    def validar_input(self, tipo, input):
+        if tipo == 'int':
+            return input.isdigit() or input == ""
+        elif tipo == 'float':
+            return input.replace('.', '', 1).isdigit() or input == ""    
+    
+    def callback(self, tipo, P):
+        return self.validar_input(tipo, P)
+    
 
 # Clase para la segunda pestaña
 class Tab2(ctk.CTkFrame):
@@ -619,8 +680,7 @@ class Tab2(ctk.CTkFrame):
         inicio = ctk.CTkButton(self, text="Iniciar", command=iniciar)
         inicio.pack(side="bottom", padx=20, pady=20, anchor="w")
         
-        self.pack(expand=True, fill='both')
-        
+        self.pack(expand=True, fill='both')           
         
 
 # # Fondo
