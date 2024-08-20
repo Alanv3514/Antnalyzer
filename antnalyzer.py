@@ -19,6 +19,7 @@ from time import sleep
 from ultralytics import YOLO
 from PIL import Image as ImgPIL
 from PIL import ImageTk
+from CTkToolTip import *
 
 from src.modules.hoja import Hoja, posicion, comparar, Aparicion, xycentro, xypredic
 from src.modules.ToolTip import *
@@ -90,7 +91,7 @@ def seleccionar_carpeta(tab_instance):
         gv.carpeta_seleccionada = carpeta
         tab_instance.cambiar_estado()
 
-def iniciar():
+def iniciar(UI2):
     global gv
     
     gv.filenames = fd.askopenfilename(multiple=True, title='Seleccione los videos')
@@ -109,22 +110,25 @@ def iniciar():
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
     
-    visualizar()
-    on_pause()
-    pausa.config(state= DISABLED)
-    base_b.config(state="normal")
-    captura.config(state="normal")
+    visualizar(UI2)
+    on_pause(UI2)
+    pausa=UI2.getPausa()
+    base_b=UI2.getBaseBlanca()
+    pausa.configure(state= "disabled")
+    base_b.configure(state="normal")
+    #captura.config(state="normal")
     
     
 
-def on_pause():
+def on_pause(UI2):
     global gv
     gv.paused = not gv.paused
+    pausa=UI2.getPausa()
     if gv.paused == True:
-        pausa.config(image = imagenBI)
+        pausa.configure(text="Pausa")
     else:
-        pausa.config(image = imagenBF)
-    visualizar()
+        pausa.configure(text="Play")
+    visualizar(UI2)
 
 def detector(results, frameactual):
     if results[0].masks is None:
@@ -170,14 +174,13 @@ def capturar():
             # Guardar la captura con el nombre generado
             cv2.imwrite(next_name, img)
             
-def base_blanca():  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
+def base_blanca(UI2):  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
     global gv, bb, primera
     bb=True
     primera = True
     gv.paused=True
-    pausa.config(image = imagenBI)
-    text4.config(text="Esperando area de detección")
-    visualizar()
+    #text4.config(text="Esperando area de detección")
+    visualizar(UI2)
 
 def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cambia el texto
     global bb, gv
@@ -185,16 +188,17 @@ def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cam
     gv.x1=point1[0]
     gv.y2=point2[1]
     gv.x2=point2[0]
-    text4.config(text="Area de deteccion seleccionada ")
-    text4.config(foreground='green')
+    #text4.config(text="Area de deteccion seleccionada ")
+    #text4.config(foreground='green')
     gv.yinicio=gv.y2 - 20
     gv.yfinal= gv.y1 + 20
     gv.paused=False
     
-def habilitar_seleccion():
+def habilitar_seleccion(UI2):
     global gv, seleccion_entrada_habilitada, primera
     primera = True
-    pausa.config(image = imagenBI)
+    pausa=UI2.getPausa()
+    pausa.configure(text="Play")
     seleccion_entrada_habilitada = not seleccion_entrada_habilitada
     gv.paused=True
     visualizar()
@@ -268,7 +272,7 @@ def clicks():
             distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
             # Display distance on GUI
             gv.cte=(10**2)/(distance**2)
-            text2.config(text="Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]")
+            #text2.config(text="Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]")
         # Reset click count and points
         click_count = 0
         gv.point1 = None
@@ -318,7 +322,7 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
 
     
 
-def visualizar():
+def visualizar(UI2):
         global gv
         if gv.cap is not None:
             global configuracion
@@ -343,12 +347,12 @@ def visualizar():
                     sec=gv.frameactual/gv.configuracion.getfps()
                     s=datetime.timedelta(seconds=int(sec))
                     hora = gv.configuracion.gethora()+s
-                    text6.config(text=str(hora))
+                    #text6.config(text=str(hora))
                     
                     gv.garch = sec/60
                     
                     if (gv.garch % gv.configuracion.gettiempo()) == 0:
-                        textdebug.config(text="Guarde " + str(gv.garch) + " veces")
+                        #textdebug.config(text="Guarde " + str(gv.garch) + " veces")
                         escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
                         # escribimos el archivo del promedio de area en el intervalo de tiempo dado.
                         
@@ -356,7 +360,7 @@ def visualizar():
                     gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
                     
                     
-                    text1.config(text="Hoja "+str(len(gv.hojas_final))+" "+str(gv.ID)+"\nSaliente: "+str(len(gv.hojas_final_sale)))
+                    #text1.config(text="Hoja "+str(len(gv.hojas_final))+" "+str(gv.ID)+"\nSaliente: "+str(len(gv.hojas_final_sale)))
 
                     # area=calculararea(gv.hojas_final)
                     # area=area*gv.cte
@@ -396,6 +400,9 @@ def visualizar():
                     #cv2.imshow("YOLO", gv.annotated_frame)
                     
                     # Mostramos en el GUI
+
+                    lblVideo= UI2.getlblVideo()
+
                     lblVideo.configure(image=img)
                     lblVideo.image = img
                     
@@ -407,17 +414,17 @@ def visualizar():
                     # Actualizar la barra de progreso
                     current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
                     total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                    progress = current_frame / total_frames * 100
-                    gv.progress_bar['value'] = progress
+                    progress = current_frame / total_frames
+                    progress_bar=UI2.getProgressBar()
+                    progress_bar.set(progress)
                     
-                    lblVideoYOLO.config(highlightbackground='red', highlightthickness=2)
-                   
                     
-                    lblVideo.after(10, visualizar)
+                    
+                    lblVideo.after(10, lambda: visualizar(UI2))
                 else:
                     gv.cap.release()
                     if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
-                        text1.config(text="Hoja "+str(gv.ID+1)+"Finalizado")
+                        #text1.config(text="Hoja "+str(gv.ID+1)+"Finalizado")
                         escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
                         gv.archi1.write("]]")
                         gv.archi1.close()
@@ -427,7 +434,7 @@ def visualizar():
                     else:
                         gv.filename=gv.filenames[gv.filenames.index(gv.filename)+1]
                         gv.cap = cv2.VideoCapture(gv.filename)
-                        visualizar()
+                        visualizar(UI2)
 
             
 
@@ -436,19 +443,7 @@ def crear_barra_progreso():
             gv.progress_bar = ttk.Progressbar(pestania2, orient=HORIZONTAL, length=640, mode='determinate')
             gv.progress_bar.place(x=80, y=515)
 
-def on_click(event):
-            global gv, primera
-            global click_count, point1, point2
-            if click_count==0:
-                gv.point1 = (event.x, event.y)
-                click_count += 1
-            elif click_count==1:
-                gv.point2 = (event.x, event.y)
-                click_count += 1
-                if primera == True:
-                    on_pause()
-                    pausa.config(state= NORMAL)
-                    primera = False
+
                 
 
 
@@ -591,14 +586,14 @@ class Tab1(ctk.CTkFrame):
         fpsapa.grid(row=4, column=1, sticky="w")
         fpsapaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
         fpsapaq.grid(row=4, column=2, sticky="w", padx=5)
-        self.crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección. Se recomienda no utilizar un valor mayor al de FPS')
+        self.crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección.\nSe recomienda no utilizar un valor mayor al de FPS')
 
         conft = ctk.CTkLabel(self, text="Confianza:").grid(row=5, column=0, sticky="w")
         conf = ctk.CTkEntry(self, textvariable=self.confstring, width=150, validate="key", validatecommand=self.vcmd_float)
         conf.grid(row=5, column=1, sticky="w")
         confq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
         confq.grid(row=5, column=2, sticky="w", padx=5)
-        self.crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos, pero se perderán detecciones')
+        self.crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos,\npero se perderán detecciones')
 
         cantapat = ctk.CTkLabel(self, text="Cantidad de apariciones:").grid(row=6, column=0, sticky="w")
         cantapa = ctk.CTkEntry(self, textvariable=self.cantstring, width=150, validate="key", validatecommand=self.vcmd_int)
@@ -633,14 +628,8 @@ class Tab1(ctk.CTkFrame):
     def msgBox():
         msg.showerror('Error!', 'Error en los parametros de configuracion')
     
-    def crear_toolTip(self, widget, text):
-        toolTip = ToolTip(widget)
-        def enter(event):
-            toolTip.show_tip(text)
-        def leave(event):
-            toolTip.hide_tip()
-        widget.bind('<Enter>', enter)
-        widget.bind('<Leave>', leave)
+    def crear_toolTip(self, widget, texto):
+        toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.3, bg_color="#000000", width=150)
         
     def guardar(self):      #Guardamos en el objeto configuracion los valores ingresados en las entradas
             global gv
@@ -672,15 +661,56 @@ class Tab2(ctk.CTkFrame):
         super().__init__(master)
         
         # Configuración de los widgets de la pestaña 2
+        self.lblVideo = ctk.CTkLabel(self, text="")
+        self.lblVideo.place(x = 80, y = 30)
+        self.lblVideo.bind("<Button-1>", self.on_click)
 
-        salir = ctk.CTkButton(self, hover=True, hover_color="#736bb0", text="Salir", command=quit_1)
-        salir.pack(side="bottom", padx=20, pady=20, anchor="e")
+        self.base_b = ctk.CTkButton(self, text="Cuadrado",width=80,  command=lambda: base_blanca(self))
+        self.base_b.place(x = 340, y = 530)
+        self.base_b.configure(state="disabled")
+
+        self.pausa = ctk.CTkButton(self, text="Pausar",width=80,  command=lambda: on_pause(self))
+        self.pausa.place(x = 180, y = 530)
+        self.pausa.configure(state="disabled")
+
+        salir = ctk.CTkButton(self, hover=True, hover_color="#736bb0",width=80, text="Salir", command=quit_1)
+        salir.place(x = 930, y = 530)
         
         # Botón "Iniciar"
-        inicio = ctk.CTkButton(self, text="Iniciar", command=iniciar)
-        inicio.pack(side="bottom", padx=20, pady=20, anchor="w")
+        self.inicio = ctk.CTkButton(self, text="Iniciar",width=80, command=lambda: iniciar(self))
+        self.inicio.place(x = 100, y = 530)
         
-        self.pack(expand=True, fill='both')           
+        self.progress_bar = ctk.CTkProgressBar(self, orientation=HORIZONTAL, width=640, mode='determinate')
+        self.progress_bar.place(x=80, y=515)
+        self.progress_bar.set(0)
+
+        self.pack(expand=True, fill='both')   
+
+    def getlblVideo(self):
+        return self.lblVideo   
+
+    def getProgressBar(self):
+        return self.progress_bar   
+    
+    def getPausa(self):
+        return self.pausa  
+    
+    def getBaseBlanca(self):
+        return self.base_b
+
+    def on_click(self, event):
+            global gv, primera
+            global click_count, point1, point2
+            if click_count==0:
+                gv.point1 = (event.x, event.y)
+                click_count += 1
+            elif click_count==1:
+                gv.point2 = (event.x, event.y)
+                click_count += 1
+                if primera == True:
+                    on_pause(self)
+                    self.pausa.configure(state= "normal")
+                    primera = False
         
 
 # # Fondo
@@ -749,7 +779,7 @@ class Tab2(ctk.CTkFrame):
 # lblVideoYOLO.place(x = 730, y = 30)
 
 # pestanias.tab(1, state="disable")
-# crear_barra_progreso()
+
 
 
   
@@ -881,7 +911,7 @@ def quit_1():   #Funcion que cierra la ventana principal
 # salir.place(x = 980, y = 600)
 
 # #Evento de click
-# lblVideo.bind("<Button-1>", on_click)
+
 
 # Bucle de ejecucion de la ventana.
 app = App()
