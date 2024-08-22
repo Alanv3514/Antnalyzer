@@ -201,7 +201,7 @@ def habilitar_seleccion(UI2):
     pausa.configure(text="Play")
     seleccion_entrada_habilitada = not seleccion_entrada_habilitada
     gv.paused=True
-    visualizar()
+    visualizar(UI2)
 
 def eliminar_hojas(hojas, frame_actual):
     global gv # Hacer referencia a la variable global
@@ -391,7 +391,7 @@ def visualizar(UI2):
                     # Convertimos el video
                     img = imutils.resize(img, width=640)
                     im = ImgPIL.fromarray(img)
-                    img = ImageTk.PhotoImage(image=im)
+                    img = ctk.CTkImage(light_image=im, dark_image=im, size=(640,480))
                     
                     # img2 = cv2.cvtColor(gv.annotated_frame, cv2.COLOR_BGR2RGB)
                     # im2 = ImgPIL.fromarray(img2)
@@ -493,6 +493,7 @@ class App(ctk.CTk):
         self.title("GUI | CUSTOMTKINTER | HOJAS")
         self.geometry("1024x640")
         ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("assets/marsh.json")
         
         # Configuración de las pestañas
         self.pestanias = MyTabView(master=self)
@@ -506,7 +507,7 @@ class MyTabView(ctk.CTkTabview):
         super().__init__(master, anchor="w", **kwargs)
 
         #Creamos las pestañas
-        self.configure(state="disabled")
+        #self.configure(state="disabled")
         self.add("Init")
         self.add("Pantalla Video")
         
@@ -659,32 +660,48 @@ class Tab1(ctk.CTkFrame):
 class Tab2(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
-        
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure((0,1), weight=1)
+
+        self.FrameVideo=ctk.CTkFrame(self)
+        self.FrameVideo.grid(row=0, column=0, padx=0, pady=(5, 5), sticky="nsew")
+
+        self.FrameBtn=ctk.CTkFrame(self)
+        self.FrameBtn.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="nsew")
+
+        self.FrameTxt=ctk.CTkFrame(self, width=280, height= 490)
+        self.FrameTxt.grid(row=0, column=1, padx=5, pady=(5, 5), sticky="nsew")
+
+
         # Configuración de los widgets de la pestaña 2
-        self.lblVideo = ctk.CTkLabel(self, text="")
-        self.lblVideo.place(x = 80, y = 30)
+        self.lblVideo = ctk.CTkLabel(self.FrameVideo, text="")
+        self.lblVideo.configure(width=640, height=480)
+        self.lblVideo.grid(row=0, column=0,sticky="")
         self.lblVideo.bind("<Button-1>", self.on_click)
 
-        self.base_b = ctk.CTkButton(self, text="Cuadrado",width=80,  command=lambda: base_blanca(self))
-        self.base_b.place(x = 340, y = 530)
-        self.base_b.configure(state="disabled")
-
-        self.pausa = ctk.CTkButton(self, text="Pausar",width=80,  command=lambda: on_pause(self))
-        self.pausa.place(x = 180, y = 530)
-        self.pausa.configure(state="disabled")
-
-        salir = ctk.CTkButton(self, hover=True, hover_color="#736bb0",width=80, text="Salir", command=quit_1)
-        salir.place(x = 930, y = 530)
-        
-        # Botón "Iniciar"
-        self.inicio = ctk.CTkButton(self, text="Iniciar",width=80, command=lambda: iniciar(self))
-        self.inicio.place(x = 100, y = 530)
-        
-        self.progress_bar = ctk.CTkProgressBar(self, orientation=HORIZONTAL, width=640, mode='determinate')
-        self.progress_bar.place(x=80, y=515)
+        self.progress_bar = ctk.CTkProgressBar(self.FrameVideo, orientation=HORIZONTAL, width=640, mode='determinate')
+        self.progress_bar.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="")
         self.progress_bar.set(0)
 
-        self.pack(expand=True, fill='both')   
+        self.base_b = ctk.CTkButton(self.FrameBtn, text="Cuadrado",  command=lambda: base_blanca(self))
+        self.base_b.grid(row=0, column=3, padx=5, pady=(10, 10), sticky="ew")
+        self.base_b.configure(state="disabled")
+
+        self.pausa = ctk.CTkButton(self.FrameBtn, text="Pausar", command=lambda: on_pause(self))
+        self.pausa.grid(row=0, column=1, padx=5, pady=(10, 10), sticky="ew")
+        self.pausa.configure(state="disabled")
+
+        boton_seleccion = ctk.CTkButton(self.FrameBtn, text="↑ ↓", command= lambda: habilitar_seleccion(self))
+        boton_seleccion.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
+
+        salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", command=quit_1)
+        salir.grid(row=0, column=4, padx=5, pady=(10, 10), sticky="ew")
+        
+        # Botón "Iniciar"
+        self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", command=lambda: iniciar(self))
+        self.inicio.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
+        
+        self.pack(expand=True)
 
     def getlblVideo(self):
         return self.lblVideo   
