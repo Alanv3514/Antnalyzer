@@ -348,7 +348,7 @@ def visualizar(UI2):
                     s=datetime.timedelta(seconds=int(sec))
                     hora = gv.configuracion.gethora()+s
                     #text6.config(text=str(hora))
-                    
+                    UI2.cambiartexto(UI2.gettxt2(), "Prueba de texto")
                     gv.garch = sec/60
                     
                     if (gv.garch % gv.configuracion.gettiempo()) == 0:
@@ -660,6 +660,9 @@ class Tab1(ctk.CTkFrame):
 class Tab2(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
+
+        self.my_font = ctk.CTkFont(family="Calibri", size=18, 
+                                             weight="bold") #weight bold/normal, slant=italic/roman
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure((0,1), weight=1)
 
@@ -669,7 +672,7 @@ class Tab2(ctk.CTkFrame):
         self.FrameBtn=ctk.CTkFrame(self)
         self.FrameBtn.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="nsew")
 
-        self.FrameTxt=ctk.CTkFrame(self, width=280, height= 490)
+        self.FrameTxt=ctk.CTkFrame(self, width=280, height= 490, fg_color="transparent")
         self.FrameTxt.grid(row=0, column=1, padx=5, pady=(5, 5), sticky="nsew")
 
 
@@ -700,12 +703,41 @@ class Tab2(ctk.CTkFrame):
         # Botón "Iniciar"
         self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", command=lambda: iniciar(self))
         self.inicio.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="Place holder 1", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="Place holder 2", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="Place holder 3", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="Place holder 4", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+
         
         self.pack(expand=True)
 
     def getlblVideo(self):
-        return self.lblVideo   
+        return self.lblVideo
 
+    def gettxt1(self):
+        return self.texto1
+
+    def gettxt2(self):
+        return self.texto2
+
+    def gettxt3(self):
+        return self.texto3
+
+    def gettxt4(self):
+        return self.texto4  
+
+    def cambiartexto(self, widget, texto):
+        widget.configure(text=texto)
+    
     def getProgressBar(self):
         return self.progress_bar   
     
