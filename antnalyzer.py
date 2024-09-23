@@ -291,9 +291,9 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
         #gv.archi1.write("\n")
         for item in hojas_final:
             for aparicion in item.apariciones:
-#                gv.archi1.write(str(item.id)+ "|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ 
-#                             str(aparicion.getxp()) +"|"+ str(aparicion.getyp()) +"|"+str(aparicion.getarea())+"|"+ str(aparicion.getframe())+"\n")
-                 gv.archi1.write('{"id":'+str(item.id)+',"x":'+str(aparicion.getx())+',"y":'+str(aparicion.gety())+',"xp":'+str(aparicion.getxp())+', "yp":'+str(aparicion.getyp())+',"area":'+str(aparicion.getarea())+',"frame":'+str(aparicion.getframe())+'},')
+                gv.archi1.write(str(item.id)+ "|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ 
+                             str(aparicion.getxp()) +"|"+ str(aparicion.getyp()) +"|"+str(aparicion.getarea())+"|"+ str(aparicion.getframe())+"\n")
+                 #gv.archi1.write('{"id":'+str(item.id)+',"x":'+str(aparicion.getx())+',"y":'+str(aparicion.gety())+',"xp":'+str(aparicion.getxp())+', "yp":'+str(aparicion.getyp())+',"area":'+str(aparicion.getarea())+',"frame":'+str(aparicion.getframe())+'},')
                         
         
     if bandera == 1:
@@ -423,10 +423,12 @@ def visualizar(UI2):
                     lblVideo.after(10, lambda: visualizar(UI2))
                 else:
                     gv.cap.release()
+                    print("gv.filenames:", gv.filenames)
+                    print("gv.filename:", gv.filename)
                     if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
                         #text1.config(text="Hoja "+str(gv.ID+1)+"Finalizado")
                         escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
-                        gv.archi1.write("]]")
+                        #gv.archi1.write("]]")
                         gv.archi1.close()
                         gv.archi2.close()
                         cv2.destroyAllWindows()
