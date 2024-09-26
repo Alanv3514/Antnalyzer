@@ -175,8 +175,8 @@ def capturar():
             cv2.imwrite(next_name, img)
             
 def base_blanca(UI2):  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
-    global gv, bb, primera
-    bb=True
+    global gv, primera
+    gv.bb=True
     primera = True
     gv.paused=True
     #text4.config(text="Esperando area de detección")
@@ -192,7 +192,7 @@ def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cam
     #text4.config(foreground='green')
     gv.yinicio=gv.y2 - 20
     gv.yfinal= gv.y1 + 20
-    gv.paused=False
+    #gv.paused=False
     
 def habilitar_seleccion(UI2):
     global gv, seleccion_entrada_habilitada, primera
@@ -255,29 +255,29 @@ def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direc
         imagen_rotada = imagen  # Ya está en la orientación deseada
     return imagen_rotada
   
-def clicks():
-    global gv, bb, seleccion_entrada_habilitada, click_count
-    if click_count==2:
-        if bb == True and seleccion_entrada_habilitada==False:    # Si el flag de que todavia no fue seleccionada la base es True, lo que hace es llamar a la funcion
-            base_blanca_aux(gv.point1, gv.point2)
-            bb = False # Despues cambiamos el flag para que los proximos dos puntos sean para seleccionar la conversion.
-        elif seleccion_entrada_habilitada == True and bb == False:  # Selección de puntos de entrada y salida
-            gv.entrada_coord = gv.point1
-            gv.salida_coord = gv.point2
-            gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
-            gv.paused=False
-            seleccion_entrada_habilitada = not seleccion_entrada_habilitada  # Cambiar bandera para evitar múltiples selecciones   
-        else:
-            # Calculate distance between two points
-            distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
-            # Display distance on GUI
-            gv.cte=(10**2)/(distance**2)
-            #text2.config(text="Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]")
-        # Reset click count and points
-        click_count = 0
-        gv.point1 = None
-        gv.point2 = None
-    return gv.paused
+# def clicks():
+#     global gv, bb, seleccion_entrada_habilitada, click_count
+#     if click_count==2:
+#         if bb == True and seleccion_entrada_habilitada==False:    # Si el flag de que todavia no fue seleccionada la base es True, lo que hace es llamar a la funcion
+#             base_blanca_aux(gv.point1, gv.point2)
+#             bb = False # Despues cambiamos el flag para que los proximos dos puntos sean para seleccionar la conversion.
+#         elif seleccion_entrada_habilitada == True and bb == False:  # Selección de puntos de entrada y salida
+#             gv.entrada_coord = gv.point1
+#             gv.salida_coord = gv.point2
+#             gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
+#             gv.paused=False
+#             seleccion_entrada_habilitada = not seleccion_entrada_habilitada  # Cambiar bandera para evitar múltiples selecciones   
+#         else:
+#             # Calculate distance between two points
+#             distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
+#             # Display distance on GUI
+#             gv.cte=(10**2)/(distance**2)
+#             #text2.config(text="Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]")
+#         # Reset click count and points
+#         click_count = 0
+#         gv.point1 = None
+#         gv.point2 = None
+#     return gv.paused
 
 
 
@@ -327,7 +327,7 @@ def visualizar(UI2):
         if gv.cap is not None:
             global configuracion
             # Read a frame from the video
-            gv.paused=clicks()
+            #gv.paused=clicks()
             if gv.paused==False:
                 gv.frameactual+=1
                 success, img = gv.cap.read()
@@ -452,11 +452,11 @@ def crear_barra_progreso():
 
 # Variables
 
-gv.font=cv2.FONT_HERSHEY_SIMPLEX #Variable de texto que puede ser usada en opencv
+gv.font=cv2.FONT_HERSHEY_SIMPLEX 
 gv.frameactual=0
 gv.frameaux=0
 gv.cte=0
-bb=False
+gv.bb=False
 kf=[]
 kf.append(KalmanFilter())
 yfinalaux= 240
@@ -750,7 +750,7 @@ class Tab2(ctk.CTkFrame):
         return self.base_b
 
     def on_click(self, event):
-            global gv, primera
+            global gv, primera, seleccion_entrada_habilitada
             global click_count, point1, point2
             if click_count==0:
                 gv.point1 = (event.x, event.y)
@@ -758,10 +758,29 @@ class Tab2(ctk.CTkFrame):
             elif click_count==1:
                 gv.point2 = (event.x, event.y)
                 click_count += 1
-                if primera == True:
+                if primera == True and gv.bb==True:
+                    base_blanca_aux(gv.point1, gv.point2)
                     on_pause(self)
                     self.pausa.configure(state= "normal")
                     primera = False
+                    gv.bb = False
+                    click_count = 0
+                elif primera == True and seleccion_entrada_habilitada==True:
+                    gv.entrada_coord = gv.point1
+                    gv.salida_coord = gv.point2
+                    gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
+                    on_pause(self)
+                    primera = False
+                    seleccion_entrada_habilitada=False
+                    click_count = 0
+                elif gv.bb==False and seleccion_entrada_habilitada==False:
+                    distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
+                    # Display distance on GUI
+                    gv.cte=(10**2)/(distance**2)
+                    texto= "Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]"
+                    self.cambiartexto(self.texto3, texto)
+                    click_count = 0
+
         
 
 # # Fondo
