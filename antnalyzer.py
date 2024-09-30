@@ -114,8 +114,10 @@ def iniciar(UI2):
     on_pause(UI2)
     pausa=UI2.getPausa()
     base_b=UI2.getBaseBlanca()
-    pausa.configure(state= "disabled")
-    base_b.configure(state="normal")
+    UI2.cambiartexto(UI2.gettxt2(), "Seleccionar el área de detección")
+    
+    UI2.getPausa().configure(state= "disabled")
+    UI2.getBaseBlanca().configure(state="normal", fg_color="#f56767")
     #captura.config(state="normal")
     
     
@@ -255,31 +257,6 @@ def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direc
         imagen_rotada = imagen  # Ya está en la orientación deseada
     return imagen_rotada
   
-# def clicks():
-#     global gv, bb, seleccion_entrada_habilitada, click_count
-#     if click_count==2:
-#         if bb == True and seleccion_entrada_habilitada==False:    # Si el flag de que todavia no fue seleccionada la base es True, lo que hace es llamar a la funcion
-#             base_blanca_aux(gv.point1, gv.point2)
-#             bb = False # Despues cambiamos el flag para que los proximos dos puntos sean para seleccionar la conversion.
-#         elif seleccion_entrada_habilitada == True and bb == False:  # Selección de puntos de entrada y salida
-#             gv.entrada_coord = gv.point1
-#             gv.salida_coord = gv.point2
-#             gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
-#             gv.paused=False
-#             seleccion_entrada_habilitada = not seleccion_entrada_habilitada  # Cambiar bandera para evitar múltiples selecciones   
-#         else:
-#             # Calculate distance between two points
-#             distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
-#             # Display distance on GUI
-#             gv.cte=(10**2)/(distance**2)
-#             #text2.config(text="Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]")
-#         # Reset click count and points
-#         click_count = 0
-#         gv.point1 = None
-#         gv.point2 = None
-#     return gv.paused
-
-
 
 def escribirarchivo(hojas_final, hojas_final_sale, bandera):
     
@@ -347,8 +324,8 @@ def visualizar(UI2):
                     sec=gv.frameactual/gv.configuracion.getfps()
                     s=datetime.timedelta(seconds=int(sec))
                     hora = gv.configuracion.gethora()+s
+                    UI2.cambiartexto(UI2.gettxt5(), str(hora))
                     #text6.config(text=str(hora))
-                    UI2.cambiartexto(UI2.gettxt2(), "Prueba de texto")
                     gv.garch = sec/60
                     
                     if (gv.garch % gv.configuracion.gettiempo()) == 0:
@@ -665,6 +642,8 @@ class Tab2(ctk.CTkFrame):
 
         self.my_font = ctk.CTkFont(family="Calibri", size=18, 
                                              weight="bold") #weight bold/normal, slant=italic/roman
+        self.my_font2 = ctk.CTkFont(family="Calibri", size=12, 
+                                             weight="bold") #weight bold/normal, slant=italic/roman
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure((0,1), weight=1)
 
@@ -688,35 +667,45 @@ class Tab2(ctk.CTkFrame):
         self.progress_bar.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="")
         self.progress_bar.set(0)
 
-        self.base_b = ctk.CTkButton(self.FrameBtn, text="Cuadrado",  command=lambda: base_blanca(self))
+        self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", width=96.6, command=lambda: iniciar(self))
+        self.inicio.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+        self.base_b = ctk.CTkButton(self.FrameBtn, text="Cuadrado", width=96.6, command=lambda: base_blanca(self))
         self.base_b.grid(row=0, column=3, padx=5, pady=(10, 10), sticky="ew")
         self.base_b.configure(state="disabled")
 
-        self.pausa = ctk.CTkButton(self.FrameBtn, text="Pausar", command=lambda: on_pause(self))
+        self.pausa = ctk.CTkButton(self.FrameBtn, text="Pausar", width=96.6, command=lambda: on_pause(self))
         self.pausa.grid(row=0, column=1, padx=5, pady=(10, 10), sticky="ew")
         self.pausa.configure(state="disabled")
 
-        boton_seleccion = ctk.CTkButton(self.FrameBtn, text="↑ ↓", command= lambda: habilitar_seleccion(self))
-        boton_seleccion.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
+        self.boton_seleccion = ctk.CTkButton(self.FrameBtn, text="↑ ↓", width=96.6, command= lambda: habilitar_seleccion(self))
+        self.boton_seleccion.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
+        self.boton_seleccion.configure(state="disabled")
 
-        salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", command=quit_1)
-        salir.grid(row=0, column=4, padx=5, pady=(10, 10), sticky="ew")
+        self.boton_conv = ctk.CTkButton(self.FrameBtn, text="Conversion", width=96.6)
+        self.boton_conv.grid(row=0, column=4, padx=5, pady=(10, 10), sticky="ew")
+
+
+        salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", width=96.6, command=quit_1)
+        salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
         
-        # Botón "Iniciar"
-        self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", command=lambda: iniciar(self))
-        self.inicio.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="Place holder 1", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="Place holder 2", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="Place holder 3", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="Place holder 4", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
+
+        self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
+        self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
+
+
 
 
         
@@ -736,6 +725,9 @@ class Tab2(ctk.CTkFrame):
 
     def gettxt4(self):
         return self.texto4  
+    
+    def gettxt5(self):
+        return self.texto5
 
     def cambiartexto(self, widget, texto):
         widget.configure(text=texto)
@@ -748,6 +740,9 @@ class Tab2(ctk.CTkFrame):
     
     def getBaseBlanca(self):
         return self.base_b
+    
+    def getBotonSeleccion(self):
+        return self.boton_seleccion
 
     def on_click(self, event):
             global gv, primera, seleccion_entrada_habilitada
@@ -761,14 +756,20 @@ class Tab2(ctk.CTkFrame):
                 if primera == True and gv.bb==True:
                     base_blanca_aux(gv.point1, gv.point2)
                     on_pause(self)
+                    self.base_b.configure(fg_color="#4E8F69")
                     self.pausa.configure(state= "normal")
+                    on_pause(self)
                     primera = False
                     gv.bb = False
+                    self.cambiartexto(self.texto1, "Area seleccionada")
+                    self.cambiartexto(self.texto2, "Seleccione la entrada y salida")
+                    self.boton_seleccion.configure(state="normal", fg_color="#f56767")
                     click_count = 0
                 elif primera == True and seleccion_entrada_habilitada==True:
                     gv.entrada_coord = gv.point1
                     gv.salida_coord = gv.point2
                     gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
+                    self.boton_seleccion.configure(fg_color="#4E8F69")
                     on_pause(self)
                     primera = False
                     seleccion_entrada_habilitada=False
@@ -781,206 +782,13 @@ class Tab2(ctk.CTkFrame):
                     self.cambiartexto(self.texto3, texto)
                     click_count = 0
 
-        
-
-# # Fondo
-# imagenF = PhotoImage(file="assets/Fondo.png")
-# background = Label(image = imagenF, text = "Fondo")
-# background.place(x = 0, y = 0, relwidth = 1, relheight = 1)
-
-
-
-# #---------------------Configuracion de botones de la interfaz principal---------------------------
-# # Iniciar Video
-# imagenBA = PhotoImage(file="assets/Abrir.png")
-# inicio = Button(pestania2, text="Iniciar",  command=iniciar)
-# inicio.place(x = 100, y = 580)
-
-# # Pausar/Reanudar Video
-# imagenBI = PhotoImage(file="assets/Inicio.png")
-# imagenBF = PhotoImage(file="assets/Finalizar.png")
-# pausa = Button(pestania2, text="Pausar",  command=on_pause)
-# pausa.place(x = 180, y = 580)
-# pausa.config(state="disabled")
-
-# # Capturar Frame
-# imagenBC = PhotoImage(file="assets/Capturar.png")
-# captura = Button(pestania2, text="Capturar",  command=capturar)
-# captura.place(x = 260, y = 580)
-# captura.config(state="disabled")
-
-# imagenBB = PhotoImage(file="assets/cuadrado.png")
-# base_b = Button(pestania2, text="Cuadrado",  command=base_blanca)
-# base_b.place(x = 340, y = 580)
-# base_b.config(state="disabled")
-
-# boton_seleccion = tk.Button(pestania2, text="Selección de Entrada y Salida", command=habilitar_seleccion)
-# boton_seleccion.place(x = 420, y = 580)
-
-
-
-# #---------------------Configuracion de textos de la interfaz principal---------------------------
-# text1 = Label(pestania2, text="Hoja "+str(gv.ID+1), font=("Cambria bold", 14))
-# text1.grid(row=0, column=1, padx=730, pady=(200,10), sticky="w")
-
-# text2 = Label(pestania2, text="Distancia de conversion: ", font=("Cambria bold", 14))
-# text2.grid(row=1, column=1, padx=730, pady=10, sticky="w")
-
-# text3 = Label(pestania2, text="Area ", font=("Cambria bold", 14))
-# text3.grid(row=2, column=1, padx=730, pady=10, sticky="w")
-
-# text4 = Label(pestania2, text="Seleccione el area de detección", font=("Cambria bold", 14))
-# text4.grid(row=3, column=1, padx=730, pady=10, sticky="w")
-# text4.config(foreground='red')
-
-# textdebug = Label(pestania2, text="Para debug", font=("Cambria bold", 14))
-# textdebug.grid(row=4, column=1, padx=730, pady=10, sticky="w")
-
-# text6 = Label(pestania2, text="", font =("Cambria bold", 12))
-# text6.place(x=720, y = 515)
-
-
-# #---------------------Configuracion del video en la interfaz---------------------------
-# lblVideo = Label(pestania2)
-# lblVideo.place(x = 80, y = 30)
-
-
-# lblVideoYOLO = Label(pestania2)
-# lblVideoYOLO.place(x = 730, y = 30)
-
-# pestanias.tab(1, state="disable")
-
-
-
-  
-
-# # Fecha
-# # Hora
-# # FPS
-# # Frames de distancia
-# # Cant frames sin aparicion
-# # Confianza
-# # Minima cantidad de apariciones
-# # Tiempo de guardado
-
-
-
-
-
-# imagenQ = PhotoImage(file="assets/interrogatorio.png")
-
-
-# #Configuracion del grid
-# # Grid.rowconfigure(pestania1,0,weight=1)  #Configuramos el grid para ordenar los objetos dentro de la ventana
-# # Grid.columnconfigure(pestania1,0,weight=1)
-
-# # Grid.rowconfigure(pestania1,1,weight=1)
-
-# fechastring=tk.StringVar()      #Configuramos el texto variable de cada entrada y lo seteamos a un valor por defecto
-# fechastring.set("01-01-1970")
-
-# horastring=tk.StringVar()
-# horastring.set("00:00")
-
-# fpstring=tk.IntVar()
-# fpstring.set(30)
-
-# fpsdisstring=tk.IntVar()
-# fpsdisstring.set(2)
-
-# fpsapastring=tk.IntVar()
-# fpsapastring.set(15)
-
-# confstring=tk.DoubleVar()
-# confstring.set(0.6)
-
-# cantstring=tk.IntVar()
-# cantstring.set(10)
-
-# tiemstring=tk.DoubleVar()
-# tiemstring.set(10)
-
-# #Funciones callback para restringir los tipos de datos de cada entrada y evitar errores del usuario
-# vcmd_int = (pestania1.register(lambda P: callback('int', P)), '%P')
-# vcmd_float = (pestania1.register(lambda P: callback('float', P)), '%P')
-
-
-# fechat = Label(pestania1, text="Fecha:").grid(row=0, column=0, sticky=W) #Creamos el texto de cada entrada
-# fecha = Entry(pestania1, textvariable = fechastring, width=10).grid(row=0, column=1, sticky=W)   #Creamos la entrada de cada variable
-# fechaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# fechaq.grid(row=0, column=2, sticky=W, padx=5)
-# crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
-
-# horat = Label(pestania1, text="Hora:").grid(row=1, column=0, sticky=W)
-# hora = Entry(pestania1, textvariable = horastring, width=10).grid(row=1, column=1, sticky=W)
-# horaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# horaq.grid(row=1, column=2, sticky=W, padx=5)
-# crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
-
-
-# fpst = Label(pestania1, text="FPS:").grid(row=2, column=0, sticky=W)
-# FPS = Entry(pestania1, textvariable = fpstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=2, column=1, sticky=W)
-# fpsq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# fpsq.grid(row=2, column=2, sticky=W, padx=5)
-# crear_toolTip(fpsq, 'FPS del vídeo')
-
-
-# fpsdist = Label(pestania1, text="Distancia de Frames:").grid(row=3, column=0, sticky=W)
-# fpsdis = Entry(pestania1, textvariable = fpsdisstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=3, column=1, sticky=W)
-# fpsdisq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# fpsdisq.grid(row=3, column=2, sticky=W, padx=5)
-# crear_toolTip(fpsdisq, 'Distancia entre frames de detección, cuanto mayor sea este numero\nmas rapido será el procesamiento a cambio de un mayor error')
-
-
-# fpsapat = Label(pestania1, text="Frames aparicion:").grid(row=4, column=0, sticky=W)
-# fpsapa = Entry(pestania1, textvariable = fpsapastring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=4, column=1, sticky=W)
-# fpsapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# fpsapaq.grid(row=4, column=2, sticky=W, padx=5)
-# crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección. Se recomienda no utilizar un valor mayor al de FPS')
-
-
-# conft = Label(pestania1, text="Confianza: ").grid(row=5, column=0, sticky=W)
-# conf = Entry(pestania1, textvariable = confstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=5, column=1, sticky=W)
-# confq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# confq.grid(row=5, column=2, sticky=W, padx=5)
-# crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos, pero se perderán detecciones')
-
-# cantapat = Label(pestania1, text="Cantidad de apariciones:").grid(row=6, column=0, sticky=W)
-# cantapa = Entry(pestania1, textvariable = cantstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=6, column=1, sticky=W)
-# cantapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# cantapaq.grid(row=6, column=2, sticky=W, padx=5)
-# crear_toolTip(cantapaq, 'Cantidad de apariciones minimas necesarias para dar por positiva la completa detección')
-
-# tiemt = Label(pestania1, text="Tiempo de guardado:").grid(row=7, column=0, sticky=W)
-# tiem = Entry(pestania1, textvariable = tiemstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=7, column=1, sticky=W)
-# tiemq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# tiemq.grid(row=7, column=2, sticky=W, padx=5)
-# crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
-
-# select = Label(pestania1, text="Carpeta de guardado").grid(row=8, column=0, sticky=W)
-# boton_seleccionar_carpeta = Button(pestania1, text="Seleccionar Carpeta", command=seleccionar_carpeta).grid(row=8, column=1, sticky=W)
-# selecq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-# selecq.grid(row=8, column=2, sticky=W, padx=5)
-# crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
-
-
-# botonok = Button(pestania1, text="Confirmar", command=guardar)
-# botonok.grid(row=9, column=0, sticky=W)
-# botonok.config(state=DISABLED)
-
-        
+                
 def quit_1():   #Funcion que cierra la ventana principal
 #     #finalizar()
      app.destroy()
      app.quit()
      #exit()
     
-
-# imagenS = PhotoImage(file="assets/salida.png")
-# salir = Button(pantalla, text="Salir", command=quit_1)
-# salir.place(x = 980, y = 600)
-
-# #Evento de click
 
 
 # Bucle de ejecucion de la ventana.
