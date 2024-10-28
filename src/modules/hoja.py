@@ -18,6 +18,13 @@ class Aparicion:
         self.xp = xp
         self.yp = yp
         self.hp = hp
+        self.match_count = 0
+    
+    def incrementar_bandera(self):
+        self.match_count += 1 
+
+    def get_bandera(self):
+        return self.match_count
         
     def getx(self):
         return self.x
@@ -48,6 +55,7 @@ class Hoja:
         self.id = id
         self.apariciones = []
         self.addaparicion(aparicion)
+        
      
     def getcantapariciones(self):
         return len(self.apariciones)
@@ -65,11 +73,12 @@ class Hoja:
         median = np.percentile(areas, 50)
         q25 = np.percentile(areas, 25)
         q75 = np.percentile(areas, 75)
-        
+        maximo = np.max(areas)
+        minimo = np.min(areas)
         # Calcular errores
-        error_median = np.std(areas)  # Puedes ajustar el cálculo del error según tus necesidades
-        error_q25 = np.std(areas) / 2  # Puedes ajustar el cálculo del error según tus necesidades
-        error_q75 = np.std(areas) * 1.5  # Puedes ajustar el cálculo del error según tus necesidades
+        error_median = np.std(areas)   
+        error_q25 = np.std(areas) / 2   
+        error_q75 = np.std(areas) * 1.5  
 
         est = {'media':media,
             'mediana': median,
@@ -77,7 +86,9 @@ class Hoja:
             'percentil75': q75,
             'error_mediana': error_median,
             'error_q25': error_q25,
-            'error_q75': error_q75}
+            'error_q75': error_q75,
+            'minimo': minimo,
+            'maximo': maximo}
         return est
     
     def getID(self):
@@ -89,9 +100,10 @@ class Hoja:
     
 def xycentro(hoja, tam):
     
-    xc=hoja.apariciones[tam-1].getx()
-    yc=hoja.apariciones[tam-1].gety()
-    return xc, yc
+    if tam > 2:
+        return hoja.apariciones[tam-1].getxp(), hoja.apariciones[tam-1].getyp()
+    else:
+        return hoja.apariciones[tam-1].getx(), hoja.apariciones[tam-1].gety()
 
 def xypredic(hoja, tam):
     
@@ -112,12 +124,25 @@ def posicion(boxes):    #Se le pasa la box detectada y devuelve la posicion corr
     return dx, dy, xmed, ymed
 
 
-def comparar(dx, dy, xmed, ymed, area, frameactual,gv,kf): # Compara la posicion actual de la hoja con la posicion anterior para reconocer si pertenece o no a una anterior detección
+def comparar(dx, dy, xmed, ymed, area, frameactual, gv,kf): # Compara la posicion actual de la hoja con la posicion anterior para reconocer si pertenece o no a una anterior detección
+    """
+    Compara la posición actual de la hoja con las posiciones previas utilizando:
+    - Distancia euclidiana.
+
+    dx, dy: Ancho y altura del bounding box de la detección actual.
+    xmed, ymed: Coordenadas del centro del bounding box de la detección actual.
+    area: Área de la detección actual.
+    frameactual: Frame actual del video.
+    prev_gray, curr_gray: Frames anteriores y actuales en escala de grises.
+    gv: Variable que almacena las hojas detectadas y sus atributos.
+    kf: Lista que contiene los filtros de Kalman para cada hoja.
+    """ 
     k=1
     hp=math.hypot(dx, dy)
     centro=(xmed, ymed)
     color = (255, 0, 0)
-    #cv2.circle(annotated_frame, centro, int(hp2), color, 2) # Prueba de distancia 
+    
+    cv2.circle(gv.annotated_frame, centro, int(hp), color, 2) # Prueba de distancia 
     
     if gv.hojas is None:
         if ymed>gv.yinicio or ymed<gv.yfinal:
@@ -131,18 +156,23 @@ def comparar(dx, dy, xmed, ymed, area, frameactual,gv,kf): # Compara la posicion
         for hoja in gv.hojas:
             tam = hoja.getcantapariciones()
             xc, yc = xycentro(hoja, tam)
+            ultimo_frame = hoja.apariciones[tam-1].getframe()
+            diferencia_frames = frameactual - ultimo_frame
             if (-k*hp)<xc-xmed<(k*hp) and (-k*hp)<yc-ymed<(k*hp):
                 gv.ID=hoja.getID()
                 xp, yp= kf[gv.ID].predict(xmed, ymed)
                 apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
                 hoja.addaparicion(apar)
+                hoja.apariciones[tam-1].incrementar_bandera()
                 encontrado=1
             elif (-2*k*hp)<xc-xmed<(2*k*hp) and (-2*k*hp)<yc-ymed<(2*k*hp):
-                hoja.getID()
-                xp, yp= kf[gv.ID].predict(xmed, ymed)
-                apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
-                hoja.addaparicion(apar)
-                encontrado=1
+                if diferencia_frames==(2*gv.configuracion.getfpsdist()):
+                    hoja.getID()
+                    xp, yp= kf[gv.ID].predict(xmed, ymed)
+                    apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
+                    hoja.addaparicion(apar)
+                    hoja.apariciones[tam-1].incrementar_bandera()
+                    encontrado=1
         
         if encontrado==0:
             if ymed>gv.yinicio or ymed<gv.yfinal:
@@ -150,7 +180,7 @@ def comparar(dx, dy, xmed, ymed, area, frameactual,gv,kf): # Compara la posicion
                 kf.append(KalmanFilter())
                 xp, yp= kf[gv.ID].predict(xmed, ymed)
                 apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
-                gv.hojas.append(Hoja(apar, gv.ID))    
+                gv.hojas.append(Hoja(apar, gv.ID))
     
-    #cv2.circle(gv.annotated_frame, centro, int(k*hp), color, 2)
+    cv2.circle(gv.annotated_frame, centro, int(k*hp), color, 2)
 

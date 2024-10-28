@@ -105,11 +105,10 @@ def iniciar(UI2):
     
     gv.ID=-1
     # Elegimos la camara
-    gv.model = YOLO("src/models_data/100_372.pt")
+    gv.model = YOLO("src/models_data/200_NG.pt")
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
-    
     visualizar(UI2)
     on_pause(UI2)
     pausa=UI2.getPausa()
@@ -146,7 +145,7 @@ def detector(results, frameactual):
                 contorno, jerarquia = cv2.findContours(tmp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 for c in contorno:
                     area=cv2.contourArea(c)
-                comparar(dx, dy, xmed, ymed, area, frameactual,gv,kf)
+                comparar(dx, dy, xmed, ymed, area, frameactual, gv, kf)
 
 def capturar():
     global gv
@@ -257,9 +256,9 @@ def detectar_direccion_entrada_salida(punto_entrada, punto_salida):
 
 def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direccion de entrada->salida
     if direccion == 'derecha_a_izquierda':
-        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    elif direccion == 'izquierda_a_derecha':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_CLOCKWISE)
+    elif direccion == 'izquierda_a_derecha':
+        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_COUNTERCLOCKWISE)
     elif direccion == 'arriba_a_abajo':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_180)
     else:  # 'abajo_a_arriba'
@@ -277,8 +276,8 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
         #gv.archi1.write("\n")
         for item in hojas_final:
             for aparicion in item.apariciones:
-                gv.archi1.write(str(item.id)+ "|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ 
-                             str(aparicion.getxp()) +"|"+ str(aparicion.getyp()) +"|"+str(aparicion.getarea())+"|"+ str(aparicion.getframe())+"\n")
+                gv.archi1.write(str(item.id)+"|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ 
+                             str(aparicion.getxp()) +"|"+ str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ str(aparicion.getframe())+"|"+str(aparicion.get_bandera())+"\n")
                  #gv.archi1.write('{"id":'+str(item.id)+',"x":'+str(aparicion.getx())+',"y":'+str(aparicion.gety())+',"xp":'+str(aparicion.getxp())+', "yp":'+str(aparicion.getyp())+',"area":'+str(aparicion.getarea())+',"frame":'+str(aparicion.getframe())+'},')
                         
         
@@ -327,7 +326,9 @@ def visualizar(UI2):
                     # Visualize the results on the frame
                     #gv.annotated_frame = results[0].plot(show=True)
                     if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
+                        gv.annotated_frame = results[0].plot()
                         detector(results, gv.frameactual)
+                        cv2.imshow("Resultado",gv.annotated_frame)
                         gv.frameaux=gv.frameactual
                     
                     sec=gv.frameactual/gv.configuracion.getfps()
@@ -364,6 +365,11 @@ def visualizar(UI2):
                             xf=hoja.apariciones[j+1].getx()+gv.x1
                             yf=hoja.apariciones[j+1].gety()+gv.y1
                             cv2.line(img,(xi,yi),(xf,yf),(r,g,b),1)
+                            xi=hoja.apariciones[j].getxp()+gv.x1
+                            yi=hoja.apariciones[j].getyp()+gv.y1
+                            xf=hoja.apariciones[j+1].getxp()+gv.x1
+                            yf=hoja.apariciones[j+1].getyp()+gv.y1
+                            cv2.line(img,(xi,yi),(xf,yf),(255,0,0),1)
                    
                     
                     
