@@ -99,11 +99,7 @@ class Hoja:
     
     
 def xycentro(hoja, tam):
-    
-    if tam > 2:
-        return hoja.apariciones[tam-1].getxp(), hoja.apariciones[tam-1].getyp()
-    else:
-        return hoja.apariciones[tam-1].getx(), hoja.apariciones[tam-1].gety()
+    return hoja.apariciones[tam-1].getx(), hoja.apariciones[tam-1].gety()
 
 def xypredic(hoja, tam):
     
@@ -123,6 +119,14 @@ def posicion(boxes):    #Se le pasa la box detectada y devuelve la posicion corr
     dy=ymed-ysup
     return dx, dy, xmed, ymed
 
+def es_duplicado(xmed, ymed, hojas, distancia_minima=5):
+    # Recorre las hojas existentes y verifica la distancia
+    for hoja in hojas:
+        tam = hoja.getcantapariciones()
+        xc, yc = hoja.apariciones[tam - 1].getx(), hoja.apariciones[tam - 1].gety()
+        if math.hypot(xc - xmed, yc - ymed) < distancia_minima:
+            return True
+    return False
 
 def comparar(dx, dy, xmed, ymed, area, frameactual, gv,kf): # Compara la posicion actual de la hoja con la posicion anterior para reconocer si pertenece o no a una anterior detección
     """
@@ -158,24 +162,26 @@ def comparar(dx, dy, xmed, ymed, area, frameactual, gv,kf): # Compara la posicio
             xc, yc = xycentro(hoja, tam)
             ultimo_frame = hoja.apariciones[tam-1].getframe()
             diferencia_frames = frameactual - ultimo_frame
-            if (-k*hp)<xc-xmed<(k*hp) and (-k*hp)<yc-ymed<(k*hp):
-                gv.ID=hoja.getID()
-                xp, yp= kf[gv.ID].predict(xmed, ymed)
-                apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
-                hoja.addaparicion(apar)
-                hoja.apariciones[tam-1].incrementar_bandera()
-                encontrado=1
-            elif (-2*k*hp)<xc-xmed<(2*k*hp) and (-2*k*hp)<yc-ymed<(2*k*hp):
-                if diferencia_frames==(2*gv.configuracion.getfpsdist()):
-                    hoja.getID()
+            if diferencia_frames>0:
+                if (-k*hp)<xc-xmed<(k*hp) and (-k*hp)<yc-ymed<(k*hp):
+                    gv.ID=hoja.getID()
                     xp, yp= kf[gv.ID].predict(xmed, ymed)
+                    if es_duplicado(xmed, ymed, gv.hojas, distancia_minima=0):
+                        hoja.apariciones[tam-1].incrementar_bandera()
                     apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
                     hoja.addaparicion(apar)
-                    hoja.apariciones[tam-1].incrementar_bandera()
+
+                    encontrado=1
+                elif (-2*k*hp)<xc-xmed<(2*k*hp) and (-2*k*hp)<yc-ymed<(2*k*hp):
+                    hoja.getID()
+                    xp, yp= kf[gv.ID].predict(xmed, ymed)
+                    if es_duplicado(xmed, ymed, gv.hojas, distancia_minima=0):
+                        hoja.apariciones[tam-1].incrementar_bandera()
+                    apar=Aparicion(xmed, ymed, xp, yp, hp, area, frameactual)
+                    hoja.addaparicion(apar)
                     encontrado=1
         
-        if encontrado==0:
-            if ymed>gv.yinicio or ymed<gv.yfinal:
+        if not encontrado and (ymed > gv.yinicio or ymed < gv.yfinal) and not es_duplicado(xmed, ymed, gv.hojas, distancia_minima=5):
                 gv.ID+=1
                 kf.append(KalmanFilter())
                 xp, yp= kf[gv.ID].predict(xmed, ymed)

@@ -105,7 +105,7 @@ def iniciar(UI2):
     
     gv.ID=-1
     # Elegimos la camara
-    gv.model = YOLO("src/models_data/200_NG.pt")
+    gv.model = YOLO("src/models_data/200_Grayscale.pt")
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
@@ -221,13 +221,16 @@ def eliminar_hojas(hojas, frame_actual):
         # Obtener la última aparición de la hoja
         primer_aparicion = hoja.apariciones[0]
         ultima_aparicion = hoja.apariciones[-1]
+        bandera_superada = any(aparicion.match_count > 1 for aparicion in hoja.apariciones)
         # Si la distancia entre el frame de la última aparición y el frame actual es mayor a 15
         if frame_actual - ultima_aparicion.getframe() > gv.configuracion.getfpsapa():
             # Agregar la hoja al array de hojas perdidas
             if hoja.getcantapariciones()>gv.configuracion.getcantapa():
-                if primer_aparicion.gety() > ultima_aparicion.gety():
-                    gv.hojas_final.append(hoja)
-                else:
+                if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
+                    if (primer_aparicion.gety() - ultima_aparicion.gety()) > 30:
+                        gv.hojas_final.append(hoja)
+                        gv.hojas_final = filtrar_duplicados(gv.hojas_final)
+                elif bandera_superada==False:
                     gv.hojas_final_sale.append(hoja)
             # Eliminar la hoja del array hojas
             del hojas[i]
@@ -255,49 +258,90 @@ def detectar_direccion_entrada_salida(punto_entrada, punto_salida):
             return 'abajo_a_arriba'  # Vertical de abajo a arriba
 
 def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direccion de entrada->salida
+    global gv
     if direccion == 'derecha_a_izquierda':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_CLOCKWISE)
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     elif direccion == 'izquierda_a_derecha':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     elif direccion == 'arriba_a_abajo':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_180)
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     else:  # 'abajo_a_arriba'
         imagen_rotada = imagen  # Ya está en la orientación deseada
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     return imagen_rotada
   
+def filtrar_duplicados(hojas):
+    """
+    Filtra las hojas duplicadas incluyendo aquellas que tienen patrones de duplicación
+    """
+    hojas_filtradas = []
+    hojas_a_descartar = set()
+    
+    for i, hoja1 in enumerate(hojas):
+        if hoja1.getID() in hojas_a_descartar:
+            continue
+            
+        duplicados_encontrados = 0  # Contador de duplicados para esta hoja
+        
+        for j, hoja2 in enumerate(hojas[i+1:], i+1):
+            ult_apar1 = hoja1.apariciones[-1]
+            ult_apar2 = hoja2.apariciones[-1]
+            
+            # Verificamos frames cercanos
+            if abs(ult_apar1.getframe() - ult_apar2.getframe()) <= 5:
+                dist = math.hypot(ult_apar1.getx() - ult_apar2.getx(), 
+                                ult_apar1.gety() - ult_apar2.gety())
+                if dist < 5:
+                    duplicados_encontrados += 1
+                    hojas_a_descartar.add(max(hoja1.getID(), hoja2.getID()))
+                    
+        # Si la hoja tiene más de un duplicado, la marcamos para eliminar
+        if duplicados_encontrados > 1:
+            hojas_a_descartar.add(hoja1.getID())
+    
+    # Filtramos las hojas
+    hojas_filtradas = [hoja for hoja in hojas if hoja.getID() not in hojas_a_descartar]
+    
+    return hojas_filtradas
 
 def escribirarchivo(hojas_final, hojas_final_sale, bandera):
-    
     global gv
     gv.estadisticas = []
+    
     if bandera == 0:
-        #gv.archi1.write("header: ")
-        gv.archi1.write(gv.configuracion.__json__())
-        #gv.archi1.write("\n")
         for item in hojas_final:
             for aparicion in item.apariciones:
-                gv.archi1.write(str(item.id)+"|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ 
-                             str(aparicion.getxp()) +"|"+ str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ str(aparicion.getframe())+"|"+str(aparicion.get_bandera())+"\n")
-                 #gv.archi1.write('{"id":'+str(item.id)+',"x":'+str(aparicion.getx())+',"y":'+str(aparicion.gety())+',"xp":'+str(aparicion.getxp())+', "yp":'+str(aparicion.getyp())+',"area":'+str(aparicion.getarea())+',"frame":'+str(aparicion.getframe())+'},')
-                        
-        
+                gv.archi1.write(str(item.id)+"|"+str(aparicion.getx()) +"|"+ 
+                               str(aparicion.gety()) +"|"+ str(aparicion.getxp()) +"|"+ 
+                               str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ 
+                               str(aparicion.getframe())+"|"+str(aparicion.get_bandera())+"\n")
+    
     if bandera == 1:
-        cont=0
-        areaitem=0
         gv.archi2.seek(0, 2)
         
-        # Guardamos en gv.estadisticas los valores estadisticos de cada area de la hoja siempre y cuando la hoja este entre el tiempo determinado
-        gv.estadisticas = [item.getarea() for item in hojas_final if (gv.garch - gv.configuracion.gettiempo()) < (item.apariciones[0].getframe() / (30 * 60)) < gv.garch] 
+        # Obtener estadísticas de las hojas en el intervalo de tiempo
+        gv.estadisticas = [item.getarea() for item in hojas_final 
+                          if (gv.garch - gv.configuracion.gettiempo()) < 
+                          (item.apariciones[0].getframe() / (30 * 60)) < gv.garch] 
 
-        if len(gv.estadisticas) >0: #Si hay objetos en gv.estadisticas calculamos el promedio y lo guardamos.
-            
-            area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte # Calcula el flujo promedio de areas em mm^2
+        if len(gv.estadisticas) > 0:
+            area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte
             area_percentil25 = np.mean([item['percentil25'] for item in gv.estadisticas])*gv.cte
             area_percentil75 = np.mean([item['percentil75'] for item in gv.estadisticas])*gv.cte
+            area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
+            area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
             
-            
-            gv.archi2.write(str(len(gv.estadisticas))+"|"+str(area_mediana)+"|"+str(area_percentil25)+"|"+str(area_percentil75)+"|")
-        gv.archi2.write(str(gv.garch-gv.configuracion.gettiempo())+"|"+str(gv.garch)+"\n")
+            # Escribir todos los valores incluyendo máximo y mínimo
+            gv.archi2.write(f"{len(gv.estadisticas)}|{area_mediana}|{area_percentil25}|"
+                           f"{area_percentil75}|{area_minima}|{area_maxima}|"
+                           f"{gv.garch-gv.configuracion.gettiempo()}|{gv.garch}\n")
 
 
     # archi1.write("Saliente: \n")
@@ -328,7 +372,6 @@ def visualizar(UI2):
                     if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
                         gv.annotated_frame = results[0].plot()
                         detector(results, gv.frameactual)
-                        cv2.imshow("Resultado",gv.annotated_frame)
                         gv.frameaux=gv.frameactual
                     
                     sec=gv.frameactual/gv.configuracion.getfps()
@@ -354,7 +397,7 @@ def visualizar(UI2):
                     # area=area*gv.cte
                     # text3.config(text="Area:  "+"%.2f" %area + " [mm^2]")
                     
-                    for i in range(len(gv.hojas_final)):
+                    """for i in range(len(gv.hojas_final)):
                         hoja=gv.hojas_final[i]
                         r = 0
                         g = 255
@@ -369,7 +412,7 @@ def visualizar(UI2):
                             yi=hoja.apariciones[j].getyp()+gv.y1
                             xf=hoja.apariciones[j+1].getxp()+gv.x1
                             yf=hoja.apariciones[j+1].getyp()+gv.y1
-                            cv2.line(img,(xi,yi),(xf,yf),(255,0,0),1)
+                            cv2.line(img,(xi,yi),(xf,yf),(255,0,0),1)"""
                    
                     
                     
