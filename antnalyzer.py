@@ -34,7 +34,7 @@ gv=VGlobals()
 
 
 class Configuracion:    #Clase de configuracion
-    def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo):
+    def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo, device):
         self.fecha = fecha
         self.hora = hora
         self.fps = fps
@@ -43,6 +43,7 @@ class Configuracion:    #Clase de configuracion
         self.conf = conf
         self.cantapa = cantapa
         self.tiempo = tiempo
+        self.device = device  
 
     def getfecha(self):
         return self.fecha
@@ -71,8 +72,11 @@ class Configuracion:    #Clase de configuracion
     def gettiempo(self):
         return self.tiempo
     
+    def getdevice(self):
+        return self.device
+    
     def __str__(self):
-        return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Tiempo de guardado: {self.tiempo}"
+        return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Tiempo de guardado: {self.tiempo}, Dispositivo: {self.device}"
 
     def __json__(self):
         return '["config": {"fecha":{self.fecha}, "hora":{self.hora}, "FPS":{self.fps},"FPSDist":{self.fpsdist}, "FPSAp":{self.fpsapa}, "Confianza":{self.conf}, "CantidadApariciones": {self.cantapa}, "DeltaTiempo": {self.tiempo}},"data":]'
@@ -97,7 +101,7 @@ def iniciar(UI2):
     gv.filenames = fd.askopenfilename(multiple=True, title='Seleccione los videos')
     gv.filename = gv.filenames[0]
     gv.hojas.clear()
-    
+    device = gv.configuracion.device
     
     gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
@@ -106,6 +110,7 @@ def iniciar(UI2):
     gv.ID=-1
     # Elegimos la camara
     gv.model = YOLO("src/models_data/200_Grayscale.pt")
+    gv.model.to(device)
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
@@ -189,11 +194,8 @@ def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cam
     gv.x1=point1[0]
     gv.y2=point2[1]
     gv.x2=point2[0]
-    #text4.config(text="Area de deteccion seleccionada ")
-    #text4.config(foreground='green')
     gv.yinicio=gv.y2 - 20
     gv.yfinal= gv.y1 + 20
-    #gv.paused=False
     
 def habilitar_seleccion(UI2):
     global gv, seleccion_entrada_habilitada, primera
@@ -352,127 +354,103 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
     
 
 def visualizar(UI2):
-        global gv
-        if gv.cap is not None:
-            global configuracion
-            # Read a frame from the video
-            #gv.paused=clicks()
-            if gv.paused==False:
-                gv.frameactual+=1
-                success, img = gv.cap.read()
-                if success:
-                    frame = img[gv.y1: gv.y2, gv.x1:gv.x2]
-                    #dim=(640,640)
-                    #frame = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA)
-                    frame = rotar_imagen(frame, gv.direccion)
-                    # Run YOLOv8 inference on the frame
-                    results = gv.model.predict(frame, conf=gv.configuracion.getconf())
-                    # Visualize the results on the frame
-                    #gv.annotated_frame = results[0].plot(show=True)
-                    if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
-                        gv.annotated_frame = results[0].plot()
-                        detector(results, gv.frameactual)
-                        gv.frameaux=gv.frameactual
-                    
-                    sec=gv.frameactual/gv.configuracion.getfps()
-                    s=datetime.timedelta(seconds=int(sec))
-                    hora = gv.configuracion.gethora()+s
-                    UI2.cambiartexto(UI2.gettxt5(), str(hora))
-                    UI2.cambiartexto(UI2.gettxt4(), "Hojas entrantes: "+str(len(gv.hojas_final)))
-                    #text6.config(text=str(hora))
-                    gv.garch = sec/60
-                    
-                    if (gv.garch % gv.configuracion.gettiempo()) == 0:
-                        #textdebug.config(text="Guarde " + str(gv.garch) + " veces")
-                        escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
-                        # escribimos el archivo del promedio de area en el intervalo de tiempo dado.
-                        
-                    #cv2.putText(img, "Hoja "+str(ID+1), (400, 50 - 5), cv2.FONT_HERSHEY_PLAIN, 1, (0, 255, 255),2)  
-                    gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
-                    
-                    
-                    #text1.config(text="Hoja "+str(len(gv.hojas_final))+" "+str(gv.ID)+"\nSaliente: "+str(len(gv.hojas_final_sale)))
+    """
+    Función principal para visualizar y procesar el video
+    Args:
+        UI2: Objeto de la interfaz de usuario
+    """
+    if gv.cap is None:
+        return
 
-                    # area=calculararea(gv.hojas_final)
-                    # area=area*gv.cte
-                    # text3.config(text="Area:  "+"%.2f" %area + " [mm^2]")
-                    
-                    """for i in range(len(gv.hojas_final)):
-                        hoja=gv.hojas_final[i]
-                        r = 0
-                        g = 255
-                        b = 0
-                        for j in range(3, len(hoja.apariciones)-1):       #Dibujamos la trayectoria de hormiga y la trayectoria predicha
-                            xi=hoja.apariciones[j].getx()+gv.x1
-                            yi=hoja.apariciones[j].gety()+gv.y1
-                            xf=hoja.apariciones[j+1].getx()+gv.x1
-                            yf=hoja.apariciones[j+1].gety()+gv.y1
-                            cv2.line(img,(xi,yi),(xf,yf),(r,g,b),1)
-                            xi=hoja.apariciones[j].getxp()+gv.x1
-                            yi=hoja.apariciones[j].getyp()+gv.y1
-                            xf=hoja.apariciones[j+1].getxp()+gv.x1
-                            yf=hoja.apariciones[j+1].getyp()+gv.y1
-                            cv2.line(img,(xi,yi),(xf,yf),(255,0,0),1)"""
-                   
-                    
-                    
-                    cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
-                    cv2.line(img,(gv.x1,gv.yfinal),(gv.x2,gv.yfinal),(255,255,255),1)
-                    cv2.line(img,(gv.x1,gv.yinicio),(gv.x2,gv.yinicio),(255,255,255),1)
-                    cv2.circle(img, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)  # (0, 255, 0) es verde en BGR
-                    cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)  # (0, 0, 255) es rojo en BGR
+    if not gv.paused:
+        try:
+            # Lectura del frame
+            success, img = gv.cap.read()
+            if not success:
+                handle_end_of_video(UI2, gv)
+                return
 
-                    
-                    gv.img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
-                    # Convertimos el video
-                    gv.img = imutils.resize(gv.img, width=640)
-                    gv.im = ImgPIL.fromarray(gv.img)
-                    img = ctk.CTkImage(light_image=gv.im, dark_image=gv.im, size=(640,480))
-                    
-                    # img2 = cv2.cvtColor(gv.annotated_frame, cv2.COLOR_BGR2RGB)
-                    # im2 = ImgPIL.fromarray(img2)
-                    # img2 = ImageTk.PhotoImage(image=im2)
+            # Incrementar contador de frames
+            gv.frameactual += 1
 
-                    #cv2.imshow("YOLO", gv.annotated_frame)
-                    
-                    # Mostramos en el GUI
+            # Procesar frame
+            frame = img[gv.y1:gv.y2, gv.x1:gv.x2]
+            frame = rotar_imagen(frame, gv.direccion)
 
-                    lblVideo= UI2.getlblVideo()
+            # Procesar detecciones YOLO solo cuando sea necesario
+            if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
+                results = gv.model.predict(frame, conf=gv.configuracion.getconf())
+                gv.annotated_frame = results[0].plot()
+                detector(results, gv.frameactual)
+                gv.frameaux = gv.frameactual
 
-                    lblVideo.configure(image=img)
-                    lblVideo.image = img
-                    
-                    
-                    #if gv.frameactual >2:
-                        #lblVideoYOLO.configure(image=img2)
-                        #lblVideoYOLO.image = img2
-                    
-                    # Actualizar la barra de progreso
-                    current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
-                    total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                    progress = current_frame / total_frames
-                    progress_bar=UI2.getProgressBar()
-                    progress_bar.set(progress)
-                    
-                    
-                    
-                    lblVideo.after(10, lambda: visualizar(UI2))
-                else:
-                    gv.cap.release()
-                    print("gv.filenames:", gv.filenames)
-                    print("gv.filename:", gv.filename)
-                    if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
-                        #text1.config(text="Hoja "+str(gv.ID+1)+"Finalizado")
-                        escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
-                        #gv.archi1.write("]]")
-                        gv.archi1.close()
-                        gv.archi2.close()
-                        cv2.destroyAllWindows()
-                        #Exportar datos
-                    else:
-                        gv.filename=gv.filenames[gv.filenames.index(gv.filename)+1]
-                        gv.cap = cv2.VideoCapture(gv.filename)
-                        visualizar(UI2)
+            # Actualizar tiempo y textos
+            sec = gv.frameactual / gv.configuracion.getfps()
+            s = datetime.timedelta(seconds=int(sec))
+            hora = gv.configuracion.gethora() + s
+            
+            # Actualizar UI
+            UI2.cambiartexto(UI2.gettxt5(), str(hora))
+            UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {len(gv.hojas_final)}")
+
+            # Manejo de guardado automático
+            gv.garch = sec / 60
+            # Asegurarse de que gettiempo() retorna un número
+            tiempo_guardado = float(gv.configuracion.gettiempo())
+            if tiempo_guardado > 0 and (gv.garch % tiempo_guardado) < 0.1:  # Usar una pequeña tolerancia
+                escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
+
+            # Procesar hojas
+            gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
+
+            # Dibujar elementos visuales
+            cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
+            cv2.line(img, (gv.x1, gv.yfinal), (gv.x2, gv.yfinal), (255, 255, 255), 1)
+            cv2.line(img, (gv.x1, gv.yinicio), (gv.x2, gv.yinicio), (255, 255, 255), 1)
+            cv2.circle(img, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)
+            cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
+
+            # Convertir y preparar imagen para mostrar
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            gv.img = img_rgb.copy()
+            img_resized = imutils.resize(img_rgb, width=640)
+            im = ImgPIL.fromarray(img_resized)
+            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, 480))
+
+            # Actualizar video en UI
+            lblVideo = UI2.getlblVideo()
+            lblVideo.configure(image=display_img)
+            lblVideo.image = display_img
+
+            # Actualizar barra de progreso
+            current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
+            total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            progress = current_frame / total_frames
+            UI2.getProgressBar().set(progress)
+
+            # Programar siguiente frame
+            lblVideo.after(10, lambda: visualizar(UI2))
+
+        except Exception as e:
+            print(f"Error en visualizar: {e}")
+            if gv.cap is not None:
+                gv.cap.release()
+            cv2.destroyAllWindows()
+
+def handle_end_of_video(UI2, gv):
+    """
+    Maneja el final del video actual
+    """
+    gv.cap.release()
+    if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
+        escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
+        gv.archi1.close()
+        gv.archi2.close()
+        cv2.destroyAllWindows()
+    else:
+        gv.filename = gv.filenames[gv.filenames.index(gv.filename)+1]
+        gv.cap = cv2.VideoCapture(gv.filename)
+        visualizar(UI2)
 
 
 # Variables
@@ -573,6 +551,23 @@ class Tab1(ctk.CTkFrame):
         self.cantstring = ctk.IntVar(value=10)
         self.tiemstring = ctk.DoubleVar(value=10)
 
+        devicet = ctk.CTkLabel(self, text="Dispositivo:").grid(row=8, column=0, sticky="w")
+        self.devices = ['cpu']  # Siempre incluir CPU
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                self.devices.append(f"cuda:{i} ({torch.cuda.get_device_name(i)})")
+        
+        # Variable para almacenar el dispositivo seleccionado
+        self.device_var = ctk.StringVar(value=self.devices[0])
+        
+        # Menú desplegable para dispositivos
+        self.device_menu = ctk.CTkOptionMenu(self, values=self.devices, variable=self.device_var, width=150,fg_color=("#5E7B6B", "#5E7B6B"), dropdown_fg_color=("#5E7B6B", "#5E7B6B"), dropdown_hover_color=("#397F5A", "#397F5A"), dropdown_text_color=("white", "white"))
+        self.device_menu.grid(row=8, column=1, sticky="w")
+
+        deviceq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        deviceq.grid(row=8, column=2, sticky="w", padx=5)
+        self.crear_toolTip(deviceq, 'Selecciona el dispositivo de procesamiento para el modelo.\nCPU: Procesamiento en CPU\nCUDA: Procesamiento en GPU')
+
         # Funciones de validación
         self.vcmd_int = (self.register(lambda P: self.callback('int', P)), '%P')
         self.vcmd_float = (self.register(lambda P: self.callback('float', P)), '%P')
@@ -637,15 +632,15 @@ class Tab1(ctk.CTkFrame):
         tiemq.grid(row=7, column=2, sticky="w", padx=5)
         self.crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
 
-        select = ctk.CTkLabel(self, text="Carpeta de guardado").grid(row=8, column=0, sticky="w")
+        select = ctk.CTkLabel(self, text="Carpeta de guardado").grid(row=9, column=0, sticky="w")
         boton_seleccionar_carpeta = ctk.CTkButton(self, text="Seleccionar Carpeta", command=lambda: seleccionar_carpeta(self))
-        boton_seleccionar_carpeta.grid(row=8, column=1, sticky="w")
+        boton_seleccionar_carpeta.grid(row=9, column=1, sticky="w")
         selecq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
-        selecq.grid(row=8, column=2, sticky="w", padx=5)
+        selecq.grid(row=9, column=2, sticky="w", padx=5)
         self.crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
 
         self.botonok = ctk.CTkButton(self, text="Confirmar", command=self.guardar)
-        self.botonok.grid(row=9, column=0, sticky=W)
+        self.botonok.grid(row=10, column=0, sticky=W)
         self.botonok.configure(state="disabled")
 
         self.pack(expand=True, fill='both')
@@ -667,8 +662,20 @@ class Tab1(ctk.CTkFrame):
                 self.msgBox()
                 return 0
             
+            selected_device = self.device_var.get().split()[0]
             print(d)
-            gv.configuracion = Configuracion(self.fechastring.get(), d, self.fpstring.get(),self.fpsdisstring.get(), self.fpsapastring.get(), self.confstring.get(), self.cantstring.get(), self.tiemstring.get())
+            gv.configuracion = Configuracion(
+                self.fechastring.get(),
+                d,
+                self.fpstring.get(),
+                self.fpsdisstring.get(),
+                self.fpsapastring.get(),
+                self.confstring.get(),
+                self.cantstring.get(),
+                self.tiemstring.get(),
+                selected_device
+            )
+            print(gv.configuracion)
             self.parent.habilitar_tabs()
             self.parent.siguiente("Pantalla Video")
 
