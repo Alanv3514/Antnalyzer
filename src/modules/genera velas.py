@@ -4,8 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Carga los datos desde el archivo txt a un DataFrame
-df = pd.read_csv('datos.txt', sep='|', header=None)
-df.columns = ['ID', 'X', 'Y', 'Kalman_X', 'Kalman_Y', 'Area', 'Frame']
+df = pd.read_csv('datos-13-11-2024.txt', sep='|', header=None)
+df.columns = ['ID', 'X', 'Y', 'Kalman_X', 'Kalman_Y', 'Area', 'Frame', 'Ap']
 
 # Agrupa por ID de hoja y calcula las estadísticas deseadas
 stats = df.groupby('ID')['Area'].agg(['mean',  

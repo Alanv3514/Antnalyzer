@@ -488,7 +488,6 @@ seleccion_conversion = False
 
 
 
-
 # Clase principal de la aplicación
 class App(ctk.CTk):
     def __init__(self):
