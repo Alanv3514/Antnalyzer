@@ -6,6 +6,8 @@ import imutils
 import math
 import os
 import random
+import pandas as pd
+import matplotlib.pyplot as plt
 import datetime
 import tkinter as tk
 from tkinter import ttk
@@ -105,7 +107,7 @@ def iniciar(UI2):
     
     gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2.write("Cant Hojas|Mediana|Percentil 25| Percentil 75| Hora\n")
+    gv.archi2.write("Cant Hojas|Mediana|Percentil 25|Percentil 75|Minimo|Maximo|Hora|\n")
     
     gv.ID=-1
     # Elegimos la camara
@@ -302,7 +304,8 @@ def filtrar_duplicados(hojas):
                                 ult_apar1.gety() - ult_apar2.gety())
                 if dist < 5:
                     duplicados_encontrados += 1
-                    hojas_a_descartar.add(max(hoja1.getID(), hoja2.getID()))
+                    hojas_a_descartar.add(hoja1.getID())
+                    hojas_a_descartar.add(hoja2.getID())
                     
         # Si la hoja tiene más de un duplicado, la marcamos para eliminar
         if duplicados_encontrados > 1:
@@ -323,7 +326,7 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
                 gv.archi1.write(str(item.id)+"|"+str(aparicion.getx()) +"|"+ 
                                str(aparicion.gety()) +"|"+ str(aparicion.getxp()) +"|"+ 
                                str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ 
-                               str(aparicion.getframe())+"|"+str(aparicion.get_bandera())+"\n")
+                               str(aparicion.getframe())+"\n")
     
     if bandera == 1:
         gv.archi2.seek(0, 2)
@@ -340,10 +343,23 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
             area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
             area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
             
+            minutos_transcurridos = int(gv.garch)
+            hora_inicial = gv.configuracion.gethora()
+            hora_actual = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
+            hora_str = f"{hora_actual.days * 24 + hora_actual.seconds // 3600:02d}:{(hora_actual.seconds // 60) % 60:02d}"
+
+
             # Escribir todos los valores incluyendo máximo y mínimo
-            gv.archi2.write(f"{len(gv.estadisticas)}|{area_mediana}|{area_percentil25}|"
-                           f"{area_percentil75}|{area_minima}|{area_maxima}|"
-                           f"{gv.garch-gv.configuracion.gettiempo()}|{gv.garch}\n")
+            gv.archi2.write(f"{len(gv.estadisticas)}|{area_mediana:.2f}|{area_percentil25:.2f}|"
+               f"{area_percentil75:.2f}|{area_minima:.2f}|{area_maxima:.2f}|"
+               f"{hora_str}\n")
+            
+            if not hasattr(gv, 'total_hojas'):
+                gv.total_hojas = 0
+            gv.total_hojas += len(hojas_final)
+            
+            # Limpiar la lista de hojas
+            gv.hojas_final.clear()
 
 
     # archi1.write("Saliente: \n")
@@ -391,13 +407,14 @@ def visualizar(UI2):
             
             # Actualizar UI
             UI2.cambiartexto(UI2.gettxt5(), str(hora))
-            UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {len(gv.hojas_final)}")
+            UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
 
             # Manejo de guardado automático
             gv.garch = sec / 60
             # Asegurarse de que gettiempo() retorna un número
             tiempo_guardado = float(gv.configuracion.gettiempo())
-            if tiempo_guardado > 0 and (gv.garch % tiempo_guardado) < 0.1:  # Usar una pequeña tolerancia
+            if tiempo_guardado > 0 and (gv.garch % gv.configuracion.gettiempo()) == 0:  # Usar una pequeña tolerancia
+                escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
                 escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
 
             # Procesar hojas
@@ -443,7 +460,6 @@ def handle_end_of_video(UI2, gv):
     """
     gv.cap.release()
     if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
-        escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
         gv.archi1.close()
         gv.archi2.close()
         cv2.destroyAllWindows()
@@ -456,6 +472,7 @@ def handle_end_of_video(UI2, gv):
 # Variables
 
 gv.font=cv2.FONT_HERSHEY_SIMPLEX 
+gv.total_hojas=0
 gv.frameactual=0
 gv.frameaux=0
 gv.cte=0
@@ -502,6 +519,24 @@ class App(ctk.CTk):
         # Configuración de las pestañas
         self.pestanias = MyTabView(master=self)
         self.pestanias.pack(expand=True, fill='both')
+
+        # Agregar protocolo de cierre
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def on_closing(self):
+        """Maneja el cierre de la aplicación"""
+        try:
+            # Limpiar recursos de matplotlib
+            tab3 = self.pestanias.tab("Análisis").winfo_children()[0]
+            if isinstance(tab3, Tab3):
+                tab3.cleanup()
+                
+            # Cerrar la aplicación
+            self.quit()
+            self.destroy()
+        except:
+            self.quit()
+            self.destroy()
         
 
 
@@ -514,7 +549,7 @@ class MyTabView(ctk.CTkTabview):
         #self.configure(state="disabled")
         self.add("Init")
         self.add("Pantalla Video")
-        
+        self.add("Análisis")
 
         # add widgets on tabs
         self.tab("Init").configure(border_width=0)  # Opcional, para estandarizar el estilo
@@ -522,8 +557,10 @@ class MyTabView(ctk.CTkTabview):
 
         self.tab("Pantalla Video").configure(border_width=0)  # Opcional
         Tab2(self.tab("Pantalla Video"))
-        #self.label = ctk.CTkLabel(master=self.tab("Init"), text="Bienvenido a la pestaña 1")
-        #self.label.pack(padx=20, pady=20)
+
+        self.tab("Análisis").configure(border_width=0)
+        Tab3(self.tab("Análisis"))  # Nueva clase Tab3
+        
 
     def habilitar_tabs(self):
         self.configure(state="normal")
@@ -868,9 +905,167 @@ class Tab2(ctk.CTkFrame):
         self.lblVideo.configure(image=frame_tk)
         self.lblVideo.image = frame_tk  
 
-                
+class Tab3(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
+        
+        self.figure = None
+        self.canvas = None
+
+        # Configuración del frame
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Frame para controles
+        self.control_frame = ctk.CTkFrame(self)
+        self.control_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        
+        # Frame para el gráfico (usando matplotlib)
+        self.plot_frame = ctk.CTkFrame(self)
+        self.plot_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Botón para seleccionar archivo
+        self.select_button = ctk.CTkButton(
+            self.control_frame,
+            text="Seleccionar Archivo",
+            command=self.select_file
+        )
+        self.select_button.grid(row=0, column=0, padx=10, pady=10)
+
+        # Label para mostrar el archivo seleccionado
+        self.file_label = ctk.CTkLabel(
+            self.control_frame,
+            text="Ningún archivo seleccionado",
+            text_color="gray"
+        )
+        self.file_label.grid(row=0, column=1, padx=10, pady=10)
+
+        # Botón para crear gráfico
+        self.plot_button = ctk.CTkButton(
+            self.control_frame,
+            text="Crear Gráfico",
+            command=self.create_plot,
+            state="disabled"
+        )
+        self.plot_button.grid(row=0, column=2, padx=10, pady=10)
+
+        self.pack(expand=True, fill='both')
+
+    def select_file(self):
+        filename = fd.askopenfilename(
+            title='Seleccionar archivo de datos',
+            filetypes=[('Archivos de texto', '*.txt')]
+        )
+        if filename:
+            self.current_file = filename
+            self.file_label.configure(
+                text=os.path.basename(filename),
+                text_color="white"
+            )
+            self.plot_button.configure(state="normal")
+
+    def create_plot(self):
+        try:
+            # Limpiar el gráfico anterior si existe
+            if self.canvas:
+                self.canvas.get_tk_widget().destroy()
+            if self.figure:
+                plt.close(self.figure)
+
+            # Limpiar el frame del gráfico
+            for widget in self.plot_frame.winfo_children():
+                widget.destroy()
+
+            # Leer el archivo con los nombres de columnas exactos
+            df = pd.read_csv(self.current_file, sep='|')
+            
+            # Ordenar por hora
+            df = df.sort_values('Hora')
+            
+            data = []
+            labels = []
+            cant_hojas = []
+            
+            for _, row in df.iterrows():
+                stats = [
+                    float(row['Minimo']), 
+                    float(row['Percentil 25']), 
+                    float(row['Mediana']), 
+                    float(row['Percentil 75']), 
+                    float(row['Maximo'])
+                ]
+                data.append(stats)
+                labels.append(f'{row["Hora"]}')  # Usar la hora directamente
+                cant_hojas.append(int(row['Cant Hojas']))
+
+            # Crear figura de matplotlib
+            self.figure = plt.figure(figsize=(10, 6))
+            ax1 = self.figure.add_subplot(111)
+
+            # Crear el boxplot
+            bplot = ax1.bxp(
+                [{
+                    'whislo': stats[0],    # Mínimo
+                    'q1': stats[1],        # Q1
+                    'med': stats[2],       # Mediana
+                    'q3': stats[3],        # Q3
+                    'whishi': stats[4],    # Máximo
+                    'fliers': []           # Sin outliers
+                } for stats in data],
+                patch_artist=True
+            )
+
+            # Personalizar el gráfico
+            plt.title('Distribución por Hora', pad=20)
+            plt.xlabel('Hora')
+            plt.ylabel('Área (mm²)')
+            
+            ax2 = ax1.twinx()
+            x_points = range(1, len(labels) + 1)
+            ax2.plot(x_points, cant_hojas, 'r-', marker='o', linewidth=2, label='Cantidad de Hojas')
+            ax2.set_ylabel('Cantidad de Hojas', color='red')
+            ax2.tick_params(axis='y', labelcolor='red')
+            ax2.grid(False)  # Desactivar grid para el segundo eje
+
+            # Configurar las etiquetas del eje X
+            ax1.set_xticks(range(1, len(labels) + 1))
+            ax1.set_xticklabels(labels, rotation=45)
+
+            # Colorear las cajas
+            for box in bplot['boxes']:
+                box.set_facecolor('lightblue')
+                box.set_alpha(0.7)
+            
+            # Configurar las etiquetas del eje X
+            plt.xticks(range(1, len(labels) + 1), labels, rotation=45)
+            
+            # Agregar grid
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.tight_layout()
+
+            # Crear el widget de matplotlib
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            canvas = FigureCanvasTkAgg(self.figure, master=self.plot_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill='both', expand=True)
+
+        except Exception as e:
+            msg.showerror('Error', f'Error al crear el gráfico: {str(e)}')
+            # Para debug
+            print(f"Error detallado: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def cleanup(self):
+        """Limpia los recursos del gráfico"""
+        if self.canvas:
+            self.canvas.get_tk_widget().destroy()
+        if self.figure:
+            plt.close(self.figure)
+
 def quit_1():   #Funcion que cierra la ventana principal
 #     #finalizar()
+     
      app.destroy()
      app.quit()
      #exit()
