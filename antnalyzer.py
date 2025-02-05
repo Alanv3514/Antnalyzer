@@ -107,7 +107,7 @@ def iniciar(UI2):
     
     gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2.write("Cant Hojas|Mediana|Percentil 25|Percentil 75|Minimo|Maximo|Hora|\n")
+    gv.archi2.write("Cant Hojas|Mediana|Percentil 25|Percentil 75|Minimo|Maximo|TSE|CI|Hora|\n")
     
     gv.ID=-1
     # Elegimos la camara
@@ -280,7 +280,72 @@ def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direc
         gv.yinicio=imagen_rotada.shape[0] - 20
         gv.yfinal= 0 + 20
     return imagen_rotada
-  
+
+def calcular_TSE(hojas_final):
+    """
+    Calcula la Tasa de Seguimiento Exitoso.
+    
+    Args:
+        hojas_final (list): Lista de hojas con trayectorias completas
+    Returns:
+        float: Tasa de seguimiento exitoso
+    """
+    trayectorias_completas = len(hojas_final)
+    trayectorias_totales = gv.ID + 1  # Total de IDs generados
+    
+    return trayectorias_completas / trayectorias_totales
+
+def calcular_TCT(hojas_final):
+    """
+    Calcula la Tasa de Completitud de Trayectoria.
+    
+    Esta métrica mide qué tan bien el algoritmo mantiene el seguimiento 
+    considerando la frecuencia de detección configurada.
+    
+    Returns:
+        float: Valor entre 0 y 1, donde 1 indica seguimiento perfecto
+    """
+    tasas_completitud = []
+    
+    for hoja in hojas_final:
+        # Obtener primer y último frame
+        primer_frame = hoja.apariciones[0].getframe()
+        ultimo_frame = hoja.apariciones[-1].getframe()
+        
+        # Calcular cuántas detecciones deberíamos tener
+        frames_totales = ultimo_frame - primer_frame
+        detecciones_esperadas = frames_totales / gv.configuracion.getfpsdist()
+        
+        # Cuántas detecciones realmente tenemos
+        detecciones_reales = len(hoja.apariciones)
+        
+        # Calcular tasa de completitud
+        if detecciones_esperadas > 0:
+            tasa = detecciones_reales / detecciones_esperadas
+            # Limitar a 1 en caso de que tengamos más detecciones de las esperadas
+            tasa = min(1.0, tasa)
+            tasas_completitud.append(tasa)
+    
+    # Retornar el promedio de todas las tasas
+    return np.mean(tasas_completitud) if tasas_completitud else 0.0
+
+def evaluar_seguimiento(hojas_final):
+    """
+    Evalúa el rendimiento general del sistema de seguimiento.
+    
+    Args:
+        hojas_final (list): Lista de hojas con trayectorias completas
+    Returns:
+        dict: Diccionario con las métricas calculadas
+    """
+    tse = calcular_TSE(hojas_final)
+    tct = calcular_TCT(hojas_final)
+    
+    return {
+        "Tasa_Seguimiento_Exitoso": tse,
+        "Tasa_de_Trayectorias": tct
+    }
+
 def filtrar_duplicados(hojas):
     """
     Filtra las hojas duplicadas incluyendo aquellas que tienen patrones de duplicación
@@ -343,6 +408,11 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
             area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
             area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
             
+            # Calcular métricas de seguimiento
+            metricas = evaluar_seguimiento(hojas_final)
+            tse = metricas["Tasa_Seguimiento_Exitoso"]
+            tct = metricas["Tasa_de_Trayectorias"]
+
             minutos_transcurridos = int(gv.garch)
             hora_inicial = gv.configuracion.gethora()
             hora_actual = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
@@ -352,6 +422,7 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
             # Escribir todos los valores incluyendo máximo y mínimo
             gv.archi2.write(f"{len(gv.estadisticas)}|{area_mediana:.2f}|{area_percentil25:.2f}|"
                f"{area_percentil75:.2f}|{area_minima:.2f}|{area_maxima:.2f}|"
+               f"{tse:.2f}|{tct:.2f}|" 
                f"{hora_str}\n")
             
             if not hasattr(gv, 'total_hojas'):
