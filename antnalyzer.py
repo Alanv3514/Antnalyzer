@@ -230,11 +230,14 @@ def eliminar_hojas(hojas, frame_actual):
         if frame_actual - ultima_aparicion.getframe() > gv.configuracion.getfpsapa():
             # Agregar la hoja al array de hojas perdidas
             if hoja.getcantapariciones()>gv.configuracion.getcantapa():
+                gv.valid_ID += 1 # Aumentamos el ID valido
                 if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
                     if (primer_aparicion.gety() - ultima_aparicion.gety()) > 30:
+                        hoja.valid_id = gv.valid_ID
                         gv.hojas_final.append(hoja)
                         gv.hojas_final = filtrar_duplicados(gv.hojas_final)
                 elif bandera_superada==False:
+                    hoja.valid_id = gv.valid_ID
                     gv.hojas_final_sale.append(hoja)
             # Eliminar la hoja del array hojas
             del hojas[i]
@@ -290,10 +293,16 @@ def calcular_TSE(hojas_final):
     Returns:
         float: Tasa de seguimiento exitoso
     """
-    trayectorias_completas = len(hojas_final)
-    trayectorias_totales = gv.ID + 1  # Total de IDs generados
+
+    if not hasattr(gv, 'id_anterior'):
+        gv.id_anterior = 0
+
+    valid_ids_in_interval = gv.valid_ID - gv.id_anterior
+    tse = len(hojas_final) / valid_ids_in_interval if valid_ids_in_interval > 0 else 0.0
+
+    gv.id_anterior = gv.valid_ID
     
-    return trayectorias_completas / trayectorias_totales
+    return tse
 
 def calcular_TCT(hojas_final):
     """
@@ -388,7 +397,7 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
     if bandera == 0:
         for item in hojas_final:
             for aparicion in item.apariciones:
-                gv.archi1.write(str(item.id)+"|"+str(aparicion.getx()) +"|"+ 
+                gv.archi1.write(str(item.valid_id)+"|"+str(aparicion.getx()) +"|"+ 
                                str(aparicion.gety()) +"|"+ str(aparicion.getxp()) +"|"+ 
                                str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ 
                                str(aparicion.getframe())+"\n")
@@ -552,6 +561,7 @@ kf=[]
 kf.append(KalmanFilter())
 yfinalaux= 240
 gv.ID=-1
+gv.valid_ID=0
 gv.x1=0
 gv.x2=640
 gv.y1=0

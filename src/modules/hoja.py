@@ -53,6 +53,7 @@ class Aparicion:
 class Hoja:
     def __init__(self, aparicion, id):
         self.id = id
+        self.valid_id = None
         self.apariciones = []
         self.addaparicion(aparicion)
         
