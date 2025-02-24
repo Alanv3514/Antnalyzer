@@ -107,7 +107,7 @@ def iniciar(UI2):
     
     gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2.write("Cant Hojas|Mediana|Percentil 25|Percentil 75|Minimo|Maximo|TSE|CI|Hora|\n")
+    gv.archi2.write("CantHojas,Mediana,Percentil25,Percentil75,Minimo,Maximo,Media,AreaTotal,TSE,TCT,Fecha,HoraInicio,HoraFin\n")
     
     gv.ID=-1
     # Elegimos la camara
@@ -416,6 +416,8 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
             area_percentil75 = np.mean([item['percentil75'] for item in gv.estadisticas])*gv.cte
             area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
             area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
+            area_media = np.mean([item['media'] for item in gv.estadisticas])*gv.cte
+            area_total = sum([item['media'] for item in gv.estadisticas])*gv.cte  # Suma de todas las áreas medias
             
             # Calcular métricas de seguimiento
             metricas = evaluar_seguimiento(hojas_final)
@@ -424,15 +426,40 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
 
             minutos_transcurridos = int(gv.garch)
             hora_inicial = gv.configuracion.gethora()
-            hora_actual = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
-            hora_str = f"{hora_actual.days * 24 + hora_actual.seconds // 3600:02d}:{(hora_actual.seconds // 60) % 60:02d}"
+            hora_fin = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
+            hora_inicio = hora_fin - datetime.timedelta(minutes=gv.configuracion.gettiempo())
+
+            fecha_inicial_str = gv.configuracion.getfecha()
+
+            # Convertir la fecha de string a objeto datetime
+            try:
+                # Asumiendo formato DD-MM-YYYY
+                dia, mes, anio = map(int, fecha_inicial_str.split('-'))
+                fecha_inicial = datetime.datetime(anio, mes, dia)
+                
+                # Crear datetime completos para inicio y fin (fecha + hora)
+                dt_inicio = fecha_inicial + hora_inicio
+                dt_fin = fecha_inicial + hora_fin
+                
+                # Formatear las fechas y horas
+                fecha_str = dt_fin.strftime("%d-%m-%Y")
+                hora_inicio_str = dt_inicio.strftime("%H:%M")
+                hora_fin_str = dt_fin.strftime("%H:%M")
+                
+            except ValueError:
+                # En caso de error en el formato de fecha, usar valores por defecto
+                fecha_str = fecha_inicial_str
+                hora_inicio_str = f"{hora_inicio.days * 24 + hora_inicio.seconds // 3600:02d}:{(hora_inicio.seconds // 60) % 60:02d}"
+                hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
+
 
 
             # Escribir todos los valores incluyendo máximo y mínimo
-            gv.archi2.write(f"{len(gv.estadisticas)}|{area_mediana:.2f}|{area_percentil25:.2f}|"
-               f"{area_percentil75:.2f}|{area_minima:.2f}|{area_maxima:.2f}|"
-               f"{tse:.2f}|{tct:.2f}|" 
-               f"{hora_str}\n")
+            gv.archi2.write(f"{len(gv.estadisticas)},{area_mediana:.2f},{area_percentil25:.2f},"
+               f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
+               f"{area_media:.2f},{area_total:.2f},"
+               f"{tse:.2f},{tct:.2f}," 
+               f"{fecha_str},{hora_inicio_str},{hora_fin_str}\n")
             
             if not hasattr(gv, 'total_hojas'):
                 gv.total_hojas = 0
