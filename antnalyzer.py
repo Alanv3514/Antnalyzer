@@ -453,8 +453,6 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
                 hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
 
 
-
-            # Escribir todos los valores incluyendo máximo y mínimo
             gv.archi2.write(f"{len(gv.estadisticas)},{area_mediana:.2f},{area_percentil25:.2f},"
                f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
                f"{area_media:.2f},{area_total:.2f},"
