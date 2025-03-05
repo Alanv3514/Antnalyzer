@@ -1,4 +1,3 @@
-
 import cv2
 import numpy as np
 import torch
@@ -31,6 +30,15 @@ from src.modules.KalmanFilter import KalmanFilter
 class VGlobals:
     def __init__(self):
         self.PASSES=None
+        self.paused = False
+        self.point1 = None
+        self.point2 = None
+        self.bb = False
+        
+        # Estados de configuración
+        self.area_seleccionada = False
+        self.entrada_salida_seleccionada = False
+        self.conversion_seleccionada = False
         
 gv=VGlobals()
 
@@ -101,6 +109,9 @@ def iniciar(UI2):
     global gv
     
     gv.filenames = fd.askopenfilename(multiple=True, title='Seleccione los videos')
+    if not gv.filenames:  # Si el usuario cancela la selección
+        return
+        
     gv.filename = gv.filenames[0]
     gv.hojas.clear()
     device = gv.configuracion.device
@@ -110,32 +121,50 @@ def iniciar(UI2):
     gv.archi2.write("CantHojas,Mediana,Percentil25,Percentil75,Minimo,Maximo,Media,AreaTotal,TSE,TCT,Fecha,HoraInicio,HoraFin\n")
     
     gv.ID=-1
-    # Elegimos la camara
-    gv.model = YOLO("src/models_data/200_Grayscale.pt")
+    # Elegimos el modelo de detección
+    gv.model = YOLO("src/models_data/100_372.pt")
     gv.model.to(device)
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
+    
+    # Habilitar todos los botones necesarios desde el inicio
+    UI2.getPausa().configure(state="normal")
+    UI2.getBaseBlanca().configure(state="normal", fg_color="#f56767")
+    UI2.getBotonSeleccion().configure(state="normal", fg_color="#f56767")
+    
+    # Restablecemos los estados de configuración
+    gv.area_seleccionada = False
+    gv.entrada_salida_seleccionada = False
+    gv.conversion_seleccionada = False
+    
+    # Mensajes iniciales actualizados
+    UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
+    
     visualizar(UI2)
     on_pause(UI2)
-    pausa=UI2.getPausa()
-    base_b=UI2.getBaseBlanca()
-    UI2.cambiartexto(UI2.gettxt2(), "Seleccionar el área de detección")
-    
-    UI2.getPausa().configure(state= "disabled")
-    UI2.getBaseBlanca().configure(state="normal", fg_color="#f56767")
-    #captura.config(state="normal")
-    
-    
 
 def on_pause(UI2):
     global gv
     gv.paused = not gv.paused
-    pausa=UI2.getPausa()
-    if gv.paused == True:
-        pausa.configure(text="Pausa")
-    else:
+    pausa = UI2.getPausa()
+    
+    if gv.paused:
         pausa.configure(text="Play")
+    else:
+        # Solo permitir continuar si todas las configuraciones están completas, o si no estamos en modo de configuración
+        if hasattr(gv, 'area_seleccionada') and hasattr(gv, 'entrada_salida_seleccionada') and hasattr(gv, 'conversion_seleccionada'):
+            if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
+                pausa.configure(text="Pausa")
+            else:
+                # No permitir continuar si falta alguna configuración
+                gv.paused = True
+                pausa.configure(text="Play")
+                UI2.cambiartexto(UI2.gettxt4(), "Complete las 3 configuraciones")
+                return
+        else:
+            pausa.configure(text="Pausa")
+            
     visualizar(UI2)
 
 def detector(results, frameactual):
@@ -183,38 +212,63 @@ def capturar():
             cv2.imwrite(next_name, img)
             
 def base_blanca(UI2):  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
-    global gv, primera
-    gv.bb=True
-    primera = True
-    gv.paused=True
-    #text4.config(text="Esperando area de detección")
+    global gv, seleccion_entrada_habilitada, seleccion_conversion
+    
+    gv.bb = True
+    seleccion_entrada_habilitada = False
+    seleccion_conversion = False
+    gv.paused = True
+    
+    # Cambiar color de botones para indicar el modo activo
+    UI2.getBaseBlanca().configure(fg_color="#f56767")
+    UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")
+    UI2.getBotonConv().configure(fg_color="#2B2B2B")
+    
+    UI2.cambiartexto(UI2.gettxt1(), "1. Área → Seleccione con clic y arrastre")
     visualizar(UI2)
 
 def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cambia el texto
-    global bb, gv
-    gv.y1=point1[1]
-    gv.x1=point1[0]
-    gv.y2=point2[1]
-    gv.x2=point2[0]
-    gv.yinicio=gv.y2 - 20
-    gv.yfinal= gv.y1 + 20
+    global gv
+    gv.y1 = point1[1]
+    gv.x1 = point1[0]
+    gv.y2 = point2[1]
+    gv.x2 = point2[0]
+    gv.yinicio = gv.y2 - 20
+    gv.yfinal = gv.y1 + 20
+    gv.area_seleccionada = True
     
 def habilitar_seleccion(UI2):
-    global gv, seleccion_entrada_habilitada, primera
-    primera = True
-    pausa=UI2.getPausa()
-    pausa.configure(text="Play")
-    seleccion_entrada_habilitada = not seleccion_entrada_habilitada
-    gv.paused=True
+    global gv, seleccion_entrada_habilitada, seleccion_conversion
+    
+    seleccion_entrada_habilitada = True
+    seleccion_conversion = False
+    gv.bb = False
+    gv.paused = True
+    
+    # Cambiar color de botones para indicar el modo activo
+    UI2.getBaseBlanca().configure(fg_color="#2B2B2B")
+    UI2.getBotonSeleccion().configure(fg_color="#f56767")
+    UI2.getBotonConv().configure(fg_color="#2B2B2B")
+    
+    UI2.cambiartexto(UI2.gettxt2(), "2. E/S → Seleccione entrada")
+    UI2.getPausa().configure(text="Play")
     visualizar(UI2)
 
 def habilitar_conversion(UI2):
-    global seleccion_conversion, primera
-    primera = True
-    pausa=UI2.getPausa()
-    pausa.configure(text="Play")
-    seleccion_conversion = not seleccion_conversion
-    gv.paused=True
+    global gv, seleccion_conversion, seleccion_entrada_habilitada
+    
+    seleccion_conversion = True
+    seleccion_entrada_habilitada = False
+    gv.bb = False
+    gv.paused = True
+    
+    # Cambiar color de botones para indicar el modo activo
+    UI2.getBaseBlanca().configure(fg_color="#2B2B2B")
+    UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")
+    UI2.getBotonConv().configure(fg_color="#f56767")
+    
+    UI2.cambiartexto(UI2.gettxt3(), "3. Conv → Seleccione segundo punto")
+    UI2.getPausa().configure(text="Play")
     visualizar(UI2)
 
 def eliminar_hojas(hojas, frame_actual):
@@ -494,50 +548,61 @@ def visualizar(UI2):
             # Incrementar contador de frames
             gv.frameactual += 1
 
-            # Procesar frame
+            # Procesar frame solo en el área seleccionada
             frame = img[gv.y1:gv.y2, gv.x1:gv.x2]
             frame = rotar_imagen(frame, gv.direccion)
 
             # Procesar detecciones YOLO solo cuando sea necesario
             if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
-                results = gv.model.predict(frame, conf=gv.configuracion.getconf())
+                # Usar la confianza de configuración para reducir falsos positivos
+                results = gv.model.predict(frame, conf=gv.configuracion.getconf(), verbose=False)
                 gv.annotated_frame = results[0].plot()
                 detector(results, gv.frameactual)
                 gv.frameaux = gv.frameactual
 
-            # Actualizar tiempo y textos
+            # Cálculos de tiempo
             sec = gv.frameactual / gv.configuracion.getfps()
             s = datetime.timedelta(seconds=int(sec))
             hora = gv.configuracion.gethora() + s
             
-            # Actualizar UI
+            # Actualizar UI de manera eficiente
             UI2.cambiartexto(UI2.gettxt5(), str(hora))
             UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
 
             # Manejo de guardado automático
             gv.garch = sec / 60
-            # Asegurarse de que gettiempo() retorna un número
             tiempo_guardado = float(gv.configuracion.gettiempo())
-            if tiempo_guardado > 0 and (gv.garch % gv.configuracion.gettiempo()) == 0:  # Usar una pequeña tolerancia
+            if tiempo_guardado > 0 and abs(gv.garch % tiempo_guardado) < 0.01:  # Tolerancia para evitar problemas de punto flotante
                 escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
                 escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
 
             # Procesar hojas
             gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
 
-            # Dibujar elementos visuales
+            # Dibujar elementos visuales solo en la imagen original
             cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
             cv2.line(img, (gv.x1, gv.yfinal), (gv.x2, gv.yfinal), (255, 255, 255), 1)
             cv2.line(img, (gv.x1, gv.yinicio), (gv.x2, gv.yinicio), (255, 255, 255), 1)
-            cv2.circle(img, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)
-            cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
+            
+            # Dibujar puntos de entrada/salida solo si están definidos
+            if gv.entrada_coord:
+                cv2.circle(img, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)
+            if gv.salida_coord:
+                cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
 
-            # Convertir y preparar imagen para mostrar
+            # Optimización: Convertir y redimensionar la imagen una sola vez
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            gv.img = img_rgb.copy()
-            img_resized = imutils.resize(img_rgb, width=640)
+            gv.img = img_rgb.copy()  # Guardar copia solo si es necesario
+            
+            # Redimensionar la imagen para que se ajuste a la pantalla
+            height, width = img_rgb.shape[:2]
+            ratio = 640 / width
+            new_height = int(height * ratio)
+            img_resized = cv2.resize(img_rgb, (640, new_height), interpolation=cv2.INTER_AREA)
+            
+            # Crear imagen para la interfaz
             im = ImgPIL.fromarray(img_resized)
-            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, 480))
+            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, new_height))
 
             # Actualizar video en UI
             lblVideo = UI2.getlblVideo()
@@ -545,13 +610,14 @@ def visualizar(UI2):
             lblVideo.image = display_img
 
             # Actualizar barra de progreso
-            current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
-            total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
-            progress = current_frame / total_frames
-            UI2.getProgressBar().set(progress)
+            if gv.frameactual % 5 == 0:  # Actualizar cada 5 frames para reducir carga
+                current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+                progress = current_frame / total_frames
+                UI2.getProgressBar().set(progress)
 
-            # Programar siguiente frame
-            lblVideo.after(10, lambda: visualizar(UI2))
+            # Programar siguiente frame con un intervalo adecuado para mantener fluidez
+            lblVideo.after(1, lambda: visualizar(UI2))
 
         except Exception as e:
             print(f"Error en visualizar: {e}")
@@ -877,26 +943,24 @@ class Tab2(ctk.CTkFrame):
 
         self.boton_seleccion = ctk.CTkButton(self.FrameBtn, text="↑ ↓", width=96.6, command= lambda: habilitar_seleccion(self))
         self.boton_seleccion.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
-        self.boton_seleccion.configure(state="disabled")
 
         self.boton_conv = ctk.CTkButton(self.FrameBtn, text="Conversion", width=96.6, command= lambda: habilitar_conversion(self))
         self.boton_conv.grid(row=0, column=4, padx=5, pady=(10, 10), sticky="ew")
-
 
         salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", width=96.6, command=quit_1)
         salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
         
 
-        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Área [clic y arrastre]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. E/S [dos clics]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Conv [dos clics]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="Seleccione video para comenzar", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
 
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
@@ -938,60 +1002,44 @@ class Tab2(ctk.CTkFrame):
     def getBotonSeleccion(self):
         return self.boton_seleccion
 
+    def getBotonConv(self):
+        return self.boton_conv
+        
     def on_click(self, event):
-            global gv
-            global click_count, point1, point2
-            if click_count==0 :
-                gv.point1 = (event.x, event.y)
-                click_count += 1
-                self.lblVideo.bind("<B1-Motion>", self.on_mouse_move)
-                if gv.bb == True:
-                    self.lblVideo.bind("<ButtonRelease-1>", self.on_click)
-            elif click_count==1:
-                self.lblVideo.unbind("<B1-Motion>")
-                gv.point2 = (event.x, event.y)
-                click_count += 1
-                self.interacciones_click()
-
+        global gv, click_count, seleccion_entrada_habilitada, seleccion_conversion
+        
+        # Capturar el punto actual
+        current_point = (event.x, event.y)
+        
+        # Modo de selección de área base (click y arrastre)
+        if gv.bb == True:
+            # Iniciar arrastre al hacer clic
+            gv.point1 = current_point
+            self.lblVideo.bind("<B1-Motion>", self.on_mouse_move)
+            # Procesar al soltar el botón
+            self.lblVideo.bind("<ButtonRelease-1>", self.on_release)
                 
-    def interacciones_click(self):  
-        global gv, primera, seleccion_entrada_habilitada, click_count, seleccion_conversion     
-        if gv.bb==True:
-            base_blanca_aux(gv.point1, gv.point2)
-            on_pause(self)
-            self.base_b.configure(fg_color="#4E8F69")
-            self.pausa.configure(state= "normal")
-            on_pause(self)
-            primera = False
-            gv.bb = False
-            self.cambiartexto(self.texto1, "Area seleccionada")
-            self.cambiartexto(self.texto2, "Seleccione la entrada y salida del hormiguero")
-            self.boton_seleccion.configure(state="normal", fg_color="#f56767")
-            click_count = 0
-            self.lblVideo.unbind("<ButtonRelease-1>")
-        elif seleccion_entrada_habilitada==True:
-            gv.entrada_coord = gv.point1
-            gv.salida_coord = gv.point2
-            gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
-            self.boton_seleccion.configure(fg_color="#4E8F69")
-            on_pause(self)
-            self.cambiartexto(self.texto2, "Entrada y salida seleccionada")
-            self.cambiartexto(self.texto3, "Seleccione area de equivalencia")
-            self.boton_conv.configure(state="normal", fg_color="#f56767")
-            on_pause(self)
-            primera = False
-            seleccion_entrada_habilitada=False
-            click_count = 0
-        elif seleccion_conversion==True:
-            distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
-            # Display distance on GUI
-            gv.cte=(10**2)/(distance**2)
-            texto= "Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]"
-            self.cambiartexto(self.texto3, texto)
-            self.boton_conv.configure(fg_color="#4E8F69")
-            on_pause(self)
-            seleccion_conversion=False
-            click_count = 0
+        # Modo de selección de entrada/salida (dos clicks)
+        elif seleccion_entrada_habilitada == True:
+            if click_count == 0:
+                gv.point1 = current_point
+                click_count += 1
+                self.cambiartexto(self.texto2, "2. E/S → Seleccione salida")
+            elif click_count == 1:
+                gv.point2 = current_point
+                click_count = 0
+                self.procesar_seleccion_entrada_salida()
+                
+        # Modo de selección de conversión (dos clicks) 
+        elif seleccion_conversion == True:
+            if click_count == 0:
+                gv.point1 = current_point
+                click_count += 1
+                self.cambiartexto(self.texto3, "3. Conv → Seleccione segundo punto")
+            elif click_count == 1:
+                gv.point2 = current_point
+                click_count = 0
+                self.procesar_seleccion_conversion()
 
     def on_mouse_move(self, event):
         global gv
@@ -1010,6 +1058,82 @@ class Tab2(ctk.CTkFrame):
         frame_tk = ctk.CTkImage(light_image=frame_copy, dark_image=frame_copy, size=(640,480))
         self.lblVideo.configure(image=frame_tk)
         self.lblVideo.image = frame_tk  
+
+    def on_release(self, event):
+        global gv
+        
+        if gv.bb:
+            # Capturar el punto final
+            gv.point2 = (event.x, event.y)
+            # Limpiar los bindings
+            self.lblVideo.unbind("<B1-Motion>")
+            self.lblVideo.unbind("<ButtonRelease-1>")
+            # Procesar la selección del área
+            self.procesar_seleccion_area()
+            
+    def procesar_seleccion_area(self):
+        # Procesar la selección del área base
+        global gv, seleccion_entrada_habilitada
+        
+        base_blanca_aux(gv.point1, gv.point2)
+        self.base_b.configure(fg_color="#4E8F69")
+        self.pausa.configure(state="normal")
+        
+        self.cambiartexto(self.texto1, "1. Área ✓")
+        
+        # Desactivar el modo de selección de área
+        gv.bb = False
+        
+        # Verificar si todas las configuraciones están completas
+        self.verificar_configuracion_completa()
+
+    def procesar_seleccion_entrada_salida(self):
+        # Procesar la selección de entrada/salida
+        global gv, seleccion_entrada_habilitada
+        
+        gv.entrada_coord = gv.point1
+        gv.salida_coord = gv.point2
+        gv.direccion = detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
+        gv.entrada_salida_seleccionada = True
+        
+        self.boton_seleccion.configure(fg_color="#4E8F69")
+        self.cambiartexto(self.texto2, "2. E/S ✓")
+        
+        # Desactivar el modo de selección de entrada/salida
+        seleccion_entrada_habilitada = False
+        
+        # Verificar si todas las configuraciones están completas
+        self.verificar_configuracion_completa()
+    
+    def procesar_seleccion_conversion(self):
+        # Procesar la selección de conversión
+        global gv, seleccion_conversion
+        
+        # Calcular la distancia entre los dos puntos seleccionados
+        distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
+        
+        # Establecer la constante de conversión
+        gv.cte = (10**2)/(distance**2)
+        texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
+        
+        self.cambiartexto(self.texto3, texto)
+        self.boton_conv.configure(fg_color="#4E8F69")
+        
+        # Indicar que la conversión ha sido seleccionada
+        gv.conversion_seleccionada = True
+        
+        # Desactivar el modo de selección de conversión
+        seleccion_conversion = False
+        
+        # Verificar si todas las configuraciones están completas
+        self.verificar_configuracion_completa()
+        
+    def verificar_configuracion_completa(self):
+        # Verificar si todas las configuraciones están completas
+        if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
+            self.cambiartexto(self.texto4, "Configuración completa. Pulse Play")
+            # Cambiamos el color del botón de pausa a verde para indicar que está listo para continuar
+            self.pausa.configure(fg_color="#4E8F69")
 
 class Tab3(ctk.CTkFrame):
     def __init__(self, master):
@@ -1134,16 +1258,12 @@ class Tab3(ctk.CTkFrame):
             ax2.grid(False)  # Desactivar grid para el segundo eje
 
             # Configurar las etiquetas del eje X
-            ax1.set_xticks(range(1, len(labels) + 1))
-            ax1.set_xticklabels(labels, rotation=45)
-
+            plt.xticks(range(1, len(labels) + 1), labels, rotation=45)
+            
             # Colorear las cajas
             for box in bplot['boxes']:
                 box.set_facecolor('lightblue')
                 box.set_alpha(0.7)
-            
-            # Configurar las etiquetas del eje X
-            plt.xticks(range(1, len(labels) + 1), labels, rotation=45)
             
             # Agregar grid
             plt.grid(True, linestyle='--', alpha=0.7)
