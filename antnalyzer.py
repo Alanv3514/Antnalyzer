@@ -122,48 +122,87 @@ def iniciar(UI2):
     
     gv.ID=-1
     # Elegimos el modelo de detección
-    gv.model = YOLO("src/models_data/100_372.pt")
+    gv.model = YOLO("src/models_data/10-3.pt")
     gv.model.to(device)
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
     
-    # Habilitar todos los botones necesarios desde el inicio
-    UI2.getPausa().configure(state="normal")
+    # Inicialización del video y botones
+    gv.frameactual = 0
+    gv.frameaux = 0
+    
+    # Inicializar variables para procesamiento
+    gv.entrada_coord = None
+    gv.salida_coord = None
+    gv.direccion = 'arriba_a_abajo'  # Valor por defecto
+    
+    # Habilitar solo los botones de selección desde el inicio
+    UI2.getPausa().configure(state="disabled", fg_color="#2B2B2B", text="Play")
     UI2.getBaseBlanca().configure(state="normal", fg_color="#f56767")
-    UI2.getBotonSeleccion().configure(state="normal", fg_color="#f56767")
+    UI2.getBotonSeleccion().configure(state="normal", fg_color="#2B2B2B")
+    UI2.getBotonConv().configure(state="normal", fg_color="#2B2B2B")
     
     # Restablecemos los estados de configuración
     gv.area_seleccionada = False
     gv.entrada_salida_seleccionada = False
     gv.conversion_seleccionada = False
     
+    # Resetear textos de configuración
+    UI2.cambiartexto(UI2.gettxt1(), "1. Área [clic y arrastre]")
+    UI2.cambiartexto(UI2.gettxt2(), "2. E/S [dos clics]")
+    UI2.cambiartexto(UI2.gettxt3(), "3. Conv [dos clics]")
+    
     # Mensajes iniciales actualizados
     UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
     
-    visualizar(UI2)
-    on_pause(UI2)
+    # Leer y mostrar el primer frame antes de poner en pausa
+    success, img = gv.cap.read()
+    if success:
+        # Guardar una copia del frame para las selecciones
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        gv.img = img_rgb.copy()
+        
+        # Redimensionar la imagen para que se ajuste a la pantalla
+        height, width = img_rgb.shape[:2]
+        ratio = 640 / width
+        new_height = int(height * ratio)
+        img_resized = cv2.resize(img_rgb, (640, new_height), interpolation=cv2.INTER_AREA)
+        
+        # Crear imagen para la interfaz
+        im = ImgPIL.fromarray(img_resized)
+        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, new_height))
+        
+        # Actualizar video en UI
+        lblVideo = UI2.getlblVideo()
+        lblVideo.configure(image=display_img)
+        lblVideo.image = display_img
+        
+        # Activar botón del área (antes deshabilitado)
+        UI2.getBaseBlanca().configure(state="normal")
+    
+    # Iniciar en pausa
+    gv.paused = True
 
 def on_pause(UI2):
     global gv
+    
+    # Verificar si todas las configuraciones están completas antes de cambiar el estado
+    if not (gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada):
+        # No permitir continuar si falta alguna configuración
+        gv.paused = True
+        UI2.getPausa().configure(text="Play", state="disabled", fg_color="#2B2B2B")
+        UI2.cambiartexto(UI2.gettxt4(), "Complete las 3 configuraciones")
+        return
+    
+    # Si todas las configuraciones están completas, proceder normalmente
     gv.paused = not gv.paused
     pausa = UI2.getPausa()
     
     if gv.paused:
-        pausa.configure(text="Play")
+        pausa.configure(text="Play", fg_color="#4E8F69")
     else:
-        # Solo permitir continuar si todas las configuraciones están completas, o si no estamos en modo de configuración
-        if hasattr(gv, 'area_seleccionada') and hasattr(gv, 'entrada_salida_seleccionada') and hasattr(gv, 'conversion_seleccionada'):
-            if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
-                pausa.configure(text="Pausa")
-            else:
-                # No permitir continuar si falta alguna configuración
-                gv.paused = True
-                pausa.configure(text="Play")
-                UI2.cambiartexto(UI2.gettxt4(), "Complete las 3 configuraciones")
-                return
-        else:
-            pausa.configure(text="Pausa")
+        pausa.configure(text="Pausa", fg_color="#4E8F69")
             
     visualizar(UI2)
 
@@ -220,11 +259,25 @@ def base_blanca(UI2):  # Cuando apretamos el boton ponemos el flag up, para pode
     gv.paused = True
     
     # Cambiar color de botones para indicar el modo activo
-    UI2.getBaseBlanca().configure(fg_color="#f56767")
-    UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")
-    UI2.getBotonConv().configure(fg_color="#2B2B2B")
+    UI2.getBaseBlanca().configure(fg_color="#f56767")  # Rojo para el botón activo
     
-    UI2.cambiartexto(UI2.gettxt1(), "1. Área → Seleccione con clic y arrastre")
+    # Respetar los colores de los botones según su estado de configuración
+    if gv.entrada_salida_seleccionada:
+        UI2.getBotonSeleccion().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    if gv.conversion_seleccionada:
+        UI2.getBotonConv().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonConv().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+    
+    # Si ya estaba seleccionada, mantenemos el check
+    if gv.area_seleccionada:
+        UI2.cambiartexto(UI2.gettxt1(), "1. Área ✓")
+    else:
+        UI2.cambiartexto(UI2.gettxt1(), "1. Área → Seleccione con clic y arrastre")
+    
     visualizar(UI2)
 
 def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cambia el texto
@@ -246,12 +299,24 @@ def habilitar_seleccion(UI2):
     gv.paused = True
     
     # Cambiar color de botones para indicar el modo activo
-    UI2.getBaseBlanca().configure(fg_color="#2B2B2B")
-    UI2.getBotonSeleccion().configure(fg_color="#f56767")
-    UI2.getBotonConv().configure(fg_color="#2B2B2B")
+    if gv.area_seleccionada:
+        UI2.getBaseBlanca().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBaseBlanca().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    UI2.getBotonSeleccion().configure(fg_color="#f56767")  # Rojo para el botón activo
     
-    UI2.cambiartexto(UI2.gettxt2(), "2. E/S → Seleccione entrada")
-    UI2.getPausa().configure(text="Play")
+    if gv.conversion_seleccionada:
+        UI2.getBotonConv().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonConv().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+    
+    # Si ya estaba seleccionada, mantenemos el check
+    if gv.entrada_salida_seleccionada:
+        UI2.cambiartexto(UI2.gettxt2(), "2. E/S ✓")
+    else:
+        UI2.cambiartexto(UI2.gettxt2(), "2. E/S → Seleccione entrada")
+    
     visualizar(UI2)
 
 def habilitar_conversion(UI2):
@@ -263,12 +328,25 @@ def habilitar_conversion(UI2):
     gv.paused = True
     
     # Cambiar color de botones para indicar el modo activo
-    UI2.getBaseBlanca().configure(fg_color="#2B2B2B")
-    UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")
-    UI2.getBotonConv().configure(fg_color="#f56767")
+    if gv.area_seleccionada:
+        UI2.getBaseBlanca().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBaseBlanca().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    if gv.entrada_salida_seleccionada:
+        UI2.getBotonSeleccion().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    UI2.getBotonConv().configure(fg_color="#f56767")  # Rojo para el botón activo
     
-    UI2.cambiartexto(UI2.gettxt3(), "3. Conv → Seleccione segundo punto")
-    UI2.getPausa().configure(text="Play")
+    # Si ya estaba seleccionada, mantenemos el check
+    if gv.conversion_seleccionada:
+        texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
+        UI2.cambiartexto(UI2.gettxt3(), texto)
+    else:
+        UI2.cambiartexto(UI2.gettxt3(), "3. Conv → Seleccione primer punto")
+    
     visualizar(UI2)
 
 def eliminar_hojas(hojas, frame_actual):
@@ -464,6 +542,40 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
                           if (gv.garch - gv.configuracion.gettiempo()) < 
                           (item.apariciones[0].getframe() / (30 * 60)) < gv.garch] 
 
+        # Calcular métricas de seguimiento incluso si no hay hojas
+        metricas = evaluar_seguimiento(hojas_final)
+        tse = metricas["Tasa_Seguimiento_Exitoso"]
+        tct = metricas["Tasa_de_Trayectorias"]
+
+        minutos_transcurridos = int(gv.garch)
+        hora_inicial = gv.configuracion.gethora()
+        hora_fin = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
+        hora_inicio = hora_fin - datetime.timedelta(minutes=gv.configuracion.gettiempo())
+
+        fecha_inicial_str = gv.configuracion.getfecha()
+
+        # Convertir la fecha de string a objeto datetime
+        try:
+            # Asumiendo formato DD-MM-YYYY
+            dia, mes, anio = map(int, fecha_inicial_str.split('-'))
+            fecha_inicial = datetime.datetime(anio, mes, dia)
+            
+            # Crear datetime completos para inicio y fin (fecha + hora)
+            dt_inicio = fecha_inicial + hora_inicio
+            dt_fin = fecha_inicial + hora_fin
+            
+            # Formatear las fechas y horas
+            fecha_str = dt_fin.strftime("%d-%m-%Y")
+            hora_inicio_str = dt_inicio.strftime("%H:%M")
+            hora_fin_str = dt_fin.strftime("%H:%M")
+            
+        except ValueError:
+            # En caso de error en el formato de fecha, usar valores por defecto
+            fecha_str = fecha_inicial_str
+            hora_inicio_str = f"{hora_inicio.days * 24 + hora_inicio.seconds // 3600:02d}:{(hora_inicio.seconds // 60) % 60:02d}"
+            hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
+
+        # Si hay estadísticas, usar valores calculados, si no hay, usar 0
         if len(gv.estadisticas) > 0:
             area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte
             area_percentil25 = np.mean([item['percentil25'] for item in gv.estadisticas])*gv.cte
@@ -472,53 +584,31 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
             area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
             area_media = np.mean([item['media'] for item in gv.estadisticas])*gv.cte
             area_total = sum([item['media'] for item in gv.estadisticas])*gv.cte  # Suma de todas las áreas medias
-            
-            # Calcular métricas de seguimiento
-            metricas = evaluar_seguimiento(hojas_final)
-            tse = metricas["Tasa_Seguimiento_Exitoso"]
-            tct = metricas["Tasa_de_Trayectorias"]
+            cant_hojas = len(gv.estadisticas)
+        else:
+            # Si no hay hojas en este intervalo, todos los valores son 0
+            area_mediana = 0.0
+            area_percentil25 = 0.0
+            area_percentil75 = 0.0
+            area_maxima = 0.0
+            area_minima = 0.0
+            area_media = 0.0
+            area_total = 0.0
+            cant_hojas = 0
 
-            minutos_transcurridos = int(gv.garch)
-            hora_inicial = gv.configuracion.gethora()
-            hora_fin = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
-            hora_inicio = hora_fin - datetime.timedelta(minutes=gv.configuracion.gettiempo())
-
-            fecha_inicial_str = gv.configuracion.getfecha()
-
-            # Convertir la fecha de string a objeto datetime
-            try:
-                # Asumiendo formato DD-MM-YYYY
-                dia, mes, anio = map(int, fecha_inicial_str.split('-'))
-                fecha_inicial = datetime.datetime(anio, mes, dia)
-                
-                # Crear datetime completos para inicio y fin (fecha + hora)
-                dt_inicio = fecha_inicial + hora_inicio
-                dt_fin = fecha_inicial + hora_fin
-                
-                # Formatear las fechas y horas
-                fecha_str = dt_fin.strftime("%d-%m-%Y")
-                hora_inicio_str = dt_inicio.strftime("%H:%M")
-                hora_fin_str = dt_fin.strftime("%H:%M")
-                
-            except ValueError:
-                # En caso de error en el formato de fecha, usar valores por defecto
-                fecha_str = fecha_inicial_str
-                hora_inicio_str = f"{hora_inicio.days * 24 + hora_inicio.seconds // 3600:02d}:{(hora_inicio.seconds // 60) % 60:02d}"
-                hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
-
-
-            gv.archi2.write(f"{len(gv.estadisticas)},{area_mediana:.2f},{area_percentil25:.2f},"
-               f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
-               f"{area_media:.2f},{area_total:.2f},"
-               f"{tse:.2f},{tct:.2f}," 
-               f"{fecha_str},{hora_inicio_str},{hora_fin_str}\n")
-            
-            if not hasattr(gv, 'total_hojas'):
-                gv.total_hojas = 0
-            gv.total_hojas += len(hojas_final)
-            
-            # Limpiar la lista de hojas
-            gv.hojas_final.clear()
+        # Escribir en el archivo siempre, independientemente de si hay datos o no
+        gv.archi2.write(f"{cant_hojas},{area_mediana:.2f},{area_percentil25:.2f},"
+           f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
+           f"{area_media:.2f},{area_total:.2f},"
+           f"{tse:.2f},{tct:.2f}," 
+           f"{fecha_str},{hora_inicio_str},{hora_fin_str}\n")
+        
+        if not hasattr(gv, 'total_hojas'):
+            gv.total_hojas = 0
+        gv.total_hojas += len(hojas_final)
+        
+        # Limpiar la lista de hojas
+        gv.hojas_final.clear()
 
 
     # archi1.write("Saliente: \n")
@@ -1077,7 +1167,6 @@ class Tab2(ctk.CTkFrame):
         
         base_blanca_aux(gv.point1, gv.point2)
         self.base_b.configure(fg_color="#4E8F69")
-        self.pausa.configure(state="normal")
         
         self.cambiartexto(self.texto1, "1. Área ✓")
         
@@ -1132,27 +1221,39 @@ class Tab2(ctk.CTkFrame):
         # Verificar si todas las configuraciones están completas
         if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
             self.cambiartexto(self.texto4, "Configuración completa. Pulse Play")
-            # Cambiamos el color del botón de pausa a verde para indicar que está listo para continuar
-            self.pausa.configure(fg_color="#4E8F69")
+            # Habilitar y cambiar el color del botón de pausa a verde
+            self.pausa.configure(state="normal", fg_color="#4E8F69")
+        else:
+            # Si no están todas las configuraciones completas, mantener deshabilitado el botón de pausa
+            self.pausa.configure(state="disabled", fg_color="#2B2B2B")
+            self.cambiartexto(self.texto4, "Configure los 3 parámetros")
 
 class Tab3(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
         
-        self.figure = None
-        self.canvas = None
-
+        self.figure1 = None
+        self.figure2 = None
+        self.canvas1 = None
+        self.canvas2 = None
+        self.cumulative_hojas = 0  # Variable para acumular total de hojas
+        
         # Configuración del frame
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
 
         # Frame para controles
         self.control_frame = ctk.CTkFrame(self)
         self.control_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         
-        # Frame para el gráfico (usando matplotlib)
-        self.plot_frame = ctk.CTkFrame(self)
-        self.plot_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        # Frame para el primer gráfico (boxplot)
+        self.plot_frame1 = ctk.CTkFrame(self)
+        self.plot_frame1.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        
+        # Frame para el segundo gráfico (barras)
+        self.plot_frame2 = ctk.CTkFrame(self)
+        self.plot_frame2.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
 
         # Botón para seleccionar archivo
         self.select_button = ctk.CTkButton(
@@ -1173,11 +1274,28 @@ class Tab3(ctk.CTkFrame):
         # Botón para crear gráfico
         self.plot_button = ctk.CTkButton(
             self.control_frame,
-            text="Crear Gráfico",
-            command=self.create_plot,
+            text="Crear Gráficos",
+            command=self.create_plots,
             state="disabled"
         )
         self.plot_button.grid(row=0, column=2, padx=10, pady=10)
+        
+        # Botón para guardar gráficos
+        self.save_button1 = ctk.CTkButton(
+            self.control_frame,
+            text="Guardar Gráfico 1",
+            command=lambda: self.save_plot(1),
+            state="disabled"
+        )
+        self.save_button1.grid(row=0, column=3, padx=10, pady=10)
+        
+        self.save_button2 = ctk.CTkButton(
+            self.control_frame,
+            text="Guardar Gráfico 2",
+            command=lambda: self.save_plot(2),
+            state="disabled"
+        )
+        self.save_button2.grid(row=0, column=4, padx=10, pady=10)
 
         self.pack(expand=True, fill='both')
 
@@ -1194,100 +1312,192 @@ class Tab3(ctk.CTkFrame):
             )
             self.plot_button.configure(state="normal")
 
-    def create_plot(self):
+    def create_plots(self):
         try:
-            # Limpiar el gráfico anterior si existe
-            if self.canvas:
-                self.canvas.get_tk_widget().destroy()
-            if self.figure:
-                plt.close(self.figure)
-
-            # Limpiar el frame del gráfico
-            for widget in self.plot_frame.winfo_children():
-                widget.destroy()
-
-            # Leer el archivo con los nombres de columnas exactos
-            df = pd.read_csv(self.current_file, sep='|')
+            # Limpiar los gráficos anteriores si existen
+            self.cleanup()
             
-            # Ordenar por hora
-            df = df.sort_values('Hora')
+            # Leer el archivo CSV
+            df = pd.read_csv(self.current_file)
             
-            data = []
-            labels = []
-            cant_hojas = []
+            # Eliminar la primera fila si es un duplicado del encabezado
+            if (df.iloc[0] == df.columns).all():
+                df = df.iloc[1:]
             
-            for _, row in df.iterrows():
-                stats = [
-                    float(row['Minimo']), 
-                    float(row['Percentil 25']), 
-                    float(row['Mediana']), 
-                    float(row['Percentil 75']), 
-                    float(row['Maximo'])
-                ]
-                data.append(stats)
-                labels.append(f'{row["Hora"]}')  # Usar la hora directamente
-                cant_hojas.append(int(row['Cant Hojas']))
-
-            # Crear figura de matplotlib
-            self.figure = plt.figure(figsize=(10, 6))
-            ax1 = self.figure.add_subplot(111)
-
-            # Crear el boxplot
-            bplot = ax1.bxp(
-                [{
-                    'whislo': stats[0],    # Mínimo
-                    'q1': stats[1],        # Q1
-                    'med': stats[2],       # Mediana
-                    'q3': stats[3],        # Q3
-                    'whishi': stats[4],    # Máximo
-                    'fliers': []           # Sin outliers
-                } for stats in data],
-                patch_artist=True
-            )
-
-            # Personalizar el gráfico
-            plt.title('Distribución por Hora', pad=20)
-            plt.xlabel('Hora')
-            plt.ylabel('Área (mm²)')
+            # Combinar fecha y hora para hacer una columna de tiempo
+            df['Tiempo_Inicio'] = pd.to_datetime(df['Fecha'] + ' ' + df['HoraInicio'], format='%d-%m-%Y %H:%M')
+            df['Tiempo_Fin'] = pd.to_datetime(df['Fecha'] + ' ' + df['HoraFin'], format='%d-%m-%Y %H:%M')
             
-            ax2 = ax1.twinx()
-            x_points = range(1, len(labels) + 1)
-            ax2.plot(x_points, cant_hojas, 'r-', marker='o', linewidth=2, label='Cantidad de Hojas')
-            ax2.set_ylabel('Cantidad de Hojas', color='red')
-            ax2.tick_params(axis='y', labelcolor='red')
-            ax2.grid(False)  # Desactivar grid para el segundo eje
-
-            # Configurar las etiquetas del eje X
-            plt.xticks(range(1, len(labels) + 1), labels, rotation=45)
+            # Ordenar por tiempo de inicio
+            df = df.sort_values('Tiempo_Inicio')
             
-            # Colorear las cajas
-            for box in bplot['boxes']:
-                box.set_facecolor('lightblue')
-                box.set_alpha(0.7)
+            # Crear etiquetas para el eje X en formato "HH:MM-HH:MM"
+            labels = [f"{inicio.strftime('%H:%M')}-{fin.strftime('%H:%M')}" for inicio, fin in zip(df['Tiempo_Inicio'], df['Tiempo_Fin'])]
             
-            # Agregar grid
-            plt.grid(True, linestyle='--', alpha=0.7)
-            plt.tight_layout()
-
-            # Crear el widget de matplotlib
-            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            canvas = FigureCanvasTkAgg(self.figure, master=self.plot_frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill='both', expand=True)
-
+            # GRÁFICO 1: Boxplot (Gráfico de velas)
+            self.create_boxplot(df, labels)
+            
+            # GRÁFICO 2: Cantidad de hojas y área total acumulada
+            self.create_hojas_plot(df, labels)
+            
+            # Habilitar botones de guardado
+            self.save_button1.configure(state="normal")
+            self.save_button2.configure(state="normal")
+            
         except Exception as e:
-            msg.showerror('Error', f'Error al crear el gráfico: {str(e)}')
-            # Para debug
+            msg.showerror('Error', f'Error al crear los gráficos: {str(e)}')
             print(f"Error detallado: {str(e)}")
-            import traceback
-            traceback.print_exc()
-
+    
+    def create_boxplot(self, df, labels):
+        # Crear figura para el boxplot
+        self.figure1 = plt.figure(figsize=(12, 5))
+        ax = self.figure1.add_subplot(111)
+        
+        # Datos para el boxplot
+        data = []
+        for _, row in df.iterrows():
+            stats = {
+                'whislo': row['Minimo'],      # Mínimo
+                'q1': row['Percentil25'],     # Q1 (Percentil 25)
+                'med': row['Mediana'],        # Mediana
+                'q3': row['Percentil75'],     # Q3 (Percentil 75)
+                'whishi': row['Maximo'],      # Máximo
+                'fliers': []                  # Sin outliers
+            }
+            data.append(stats)
+        
+        # Crear el boxplot
+        bplot = ax.bxp(data, patch_artist=True)
+        
+        # Personalizar el boxplot
+        for patch in bplot['boxes']:
+            patch.set_facecolor('lightblue')
+            patch.set_alpha(0.7)
+        
+        for median in bplot['medians']:
+            median.set_color('darkblue')
+            median.set_linewidth(1.5)
+        
+        # Configurar el gráfico
+        ax.set_title('Distribución del área de hojas por intervalo', fontsize=14)
+        ax.set_xlabel('Intervalos de tiempo', fontsize=12)
+        ax.set_ylabel('Área (mm²)', fontsize=12)
+        
+        # Mostrar todos los intervalos en el eje X
+        ax.set_xticks(range(1, len(labels) + 1))
+        ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+        
+        # Asegurar que se vean todos los ticks del eje X
+        plt.subplots_adjust(bottom=0.2)
+        
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        # Ajustar la figura
+        plt.tight_layout()
+        
+        # Crear el canvas para mostrar el gráfico
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        self.canvas1 = FigureCanvasTkAgg(self.figure1, master=self.plot_frame1)
+        self.canvas1.draw()
+        self.canvas1.get_tk_widget().pack(fill='both', expand=True)
+    
+    def create_hojas_plot(self, df, labels):
+        # Crear figura para el gráfico de hojas
+        self.figure2 = plt.figure(figsize=(12, 5))
+        ax1 = self.figure2.add_subplot(111)
+        
+        # Crear el gráfico de barras para cantidad de hojas
+        x = range(1, len(df) + 1)
+        bars = ax1.bar(x, df['CantHojas'], color='lightgreen', alpha=0.7, label='Cantidad de Hojas')
+        
+        # Asegurarse de que el eje Y tenga el rango adecuado para los valores de CantHojas
+        max_hojas = df['CantHojas'].max()
+        ax1.set_ylim(0, max_hojas * 1.1)  # Dar un 10% extra de espacio
+        
+        # Configurar el primer eje Y
+        ax1.set_xlabel('Intervalos de tiempo', fontsize=12)
+        ax1.set_ylabel('Cantidad de Hojas', fontsize=12, color='green')
+        ax1.tick_params(axis='y', labelcolor='green')
+        
+        # Crear un segundo eje Y para el área total por intervalo
+        ax2 = ax1.twinx()
+        
+        # Usar directamente los valores de AreaTotal (sin acumular)
+        ax2.plot(x, df['AreaTotal'], 'r-', marker='o', linewidth=2, label='Área Total')
+        
+        # Asegurarse de que el eje Y2 tenga el rango adecuado para los valores de área
+        max_area = df['AreaTotal'].max()
+        ax2.set_ylim(0, max_area * 1.1)  # Dar un 10% extra de espacio
+        
+        ax2.set_ylabel('Área Total (mm²)', fontsize=12, color='red')
+        ax2.tick_params(axis='y', labelcolor='red')
+        
+        # Asegurar que se muestren todos los valores en el eje X
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+        
+        # Asegurar que se vean todos los ticks del eje X
+        plt.subplots_adjust(bottom=0.2)
+        
+        # Añadir título y leyenda
+        ax1.set_title('Cantidad de hojas y área total por intervalo', fontsize=14)
+        
+        # Crear leyenda combinada
+        lines, labels_leg = ax1.get_legend_handles_labels()
+        lines2, labels_leg2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines + lines2, labels_leg + labels_leg2, loc='upper left')
+        
+        # Ajustar la figura
+        plt.tight_layout()
+        
+        # Crear el canvas para mostrar el gráfico
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        self.canvas2 = FigureCanvasTkAgg(self.figure2, master=self.plot_frame2)
+        self.canvas2.draw()
+        self.canvas2.get_tk_widget().pack(fill='both', expand=True)
+    
+    def save_plot(self, plot_num):
+        try:
+            # Definir opciones para guardar
+            file_types = [('PNG', '*.png'), ('JPEG', '*.jpg'), ('PDF', '*.pdf')]
+            default_name = f"grafico_{plot_num}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Solicitar ubicación de guardado
+            filename = fd.asksaveasfilename(
+                title=f'Guardar Gráfico {plot_num}',
+                defaultextension=".png",
+                filetypes=file_types,
+                initialfile=default_name
+            )
+            
+            if filename:
+                if plot_num == 1 and self.figure1:
+                    self.figure1.savefig(filename, dpi=300, bbox_inches='tight')
+                    msg.showinfo('Éxito', f'Gráfico 1 guardado como {os.path.basename(filename)}')
+                elif plot_num == 2 and self.figure2:
+                    self.figure2.savefig(filename, dpi=300, bbox_inches='tight')
+                    msg.showinfo('Éxito', f'Gráfico 2 guardado como {os.path.basename(filename)}')
+        
+        except Exception as e:
+            msg.showerror('Error', f'Error al guardar el gráfico: {str(e)}')
+    
     def cleanup(self):
-        """Limpia los recursos del gráfico"""
-        if self.canvas:
-            self.canvas.get_tk_widget().destroy()
-        if self.figure:
-            plt.close(self.figure)
+        """Limpia los recursos de los gráficos"""
+        if self.canvas1:
+            self.canvas1.get_tk_widget().destroy()
+        if self.figure1:
+            plt.close(self.figure1)
+            
+        if self.canvas2:
+            self.canvas2.get_tk_widget().destroy()
+        if self.figure2:
+            plt.close(self.figure2)
+            
+        # Limpiar los frames de gráficos
+        for widget in self.plot_frame1.winfo_children():
+            widget.destroy()
+        for widget in self.plot_frame2.winfo_children():
+            widget.destroy()
 
 def quit_1():   #Funcion que cierra la ventana principal
 #     #finalizar()
