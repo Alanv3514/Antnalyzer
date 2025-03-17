@@ -21,6 +21,10 @@ from ultralytics import YOLO
 from PIL import Image as ImgPIL
 from PIL import ImageTk
 from CTkToolTip import *
+import torch.serialization
+
+
+torch.serialization.add_safe_class('ultralytics.nn.tasks.SegmentationModel')
 
 from src.modules.hoja import Hoja, posicion, comparar, Aparicion, xycentro, xypredic
 from src.modules.ToolTip import *
@@ -121,9 +125,18 @@ def iniciar(UI2):
     gv.archi2.write("CantHojas,Mediana,Percentil25,Percentil75,Minimo,Maximo,Media,AreaTotal,TSE,TCT,Fecha,HoraInicio,HoraFin\n")
     
     gv.ID=-1
-    # Elegimos el modelo de detección
-    gv.model = YOLO("src/models_data/10-3.pt")
-    gv.model.to(device)
+    try:
+        # Elegimos el modelo de detección
+        model_path = "src/models_data/10-3.pt"
+        if not os.path.exists(model_path):
+            msg.showerror('Error', f'No se encontró el modelo en {model_path}')
+            return
+            
+        gv.model = YOLO(model_path)
+        gv.model.to(device)
+    except Exception as e:
+        msg.showerror('Error', f'Error al cargar el modelo YOLO: {str(e)}\n\nPor favor, asegúrese de que el modelo sea compatible con esta versión de PyTorch.')
+        return
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
