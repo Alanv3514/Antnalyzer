@@ -1,14 +1,17 @@
-
 import cv2
 import numpy as np
 import torch
+torch.serialization.safe_load = True  # Establecer safe_load a True antes de cargar el modelo
 import imutils
 import math
 import os
 import random
+import pandas as pd
+import matplotlib.pyplot as plt
 import datetime
 import tkinter as tk
 from tkinter import ttk
+import customtkinter as ctk
 from tkinter import *
 from tkinter import filedialog as fd
 from tkinter import messagebox as msg
@@ -18,6 +21,7 @@ from time import sleep
 from ultralytics import YOLO
 from PIL import Image as ImgPIL
 from PIL import ImageTk
+from CTkToolTip import *
 
 from src.modules.hoja import Hoja, posicion, comparar, Aparicion, xycentro, xypredic
 from src.modules.ToolTip import *
@@ -27,12 +31,21 @@ from src.modules.KalmanFilter import KalmanFilter
 class VGlobals:
     def __init__(self):
         self.PASSES=None
+        self.paused = False
+        self.point1 = None
+        self.point2 = None
+        self.bb = False
+        
+        # Estados de configuración
+        self.area_seleccionada = False
+        self.entrada_salida_seleccionada = False
+        self.conversion_seleccionada = False
         
 gv=VGlobals()
 
 
 class Configuracion:    #Clase de configuracion
-    def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo):
+    def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo, device):
         self.fecha = fecha
         self.hora = hora
         self.fps = fps
@@ -41,6 +54,7 @@ class Configuracion:    #Clase de configuracion
         self.conf = conf
         self.cantapa = cantapa
         self.tiempo = tiempo
+        self.device = device  
 
     def getfecha(self):
         return self.fecha
@@ -69,8 +83,11 @@ class Configuracion:    #Clase de configuracion
     def gettiempo(self):
         return self.tiempo
     
+    def getdevice(self):
+        return self.device
+    
     def __str__(self):
-        return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Tiempo de guardado: {self.tiempo}"
+        return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Tiempo de guardado: {self.tiempo}, Dispositivo: {self.device}"
 
     def __json__(self):
         return '["config": {"fecha":{self.fecha}, "hora":{self.hora}, "FPS":{self.fps},"FPSDist":{self.fpsdist}, "FPSAp":{self.fpsapa}, "Confianza":{self.conf}, "CantidadApariciones": {self.cantapa}, "DeltaTiempo": {self.tiempo}},"data":]'
@@ -83,47 +100,112 @@ def calculararea(hojas_final):
     return area
 
 
-def seleccionar_carpeta():
+def seleccionar_carpeta(tab_instance):
     carpeta = fd.askdirectory()
     if carpeta:
         gv.carpeta_seleccionada = carpeta
-        botonok.config(state="normal")
+        tab_instance.cambiar_estado()
 
-def iniciar():
+def iniciar(UI2):
     global gv
     
     gv.filenames = fd.askopenfilename(multiple=True, title='Seleccione los videos')
+    if not gv.filenames:  # Si el usuario cancela la selección
+        return
+        
     gv.filename = gv.filenames[0]
     gv.hojas.clear()
-    
+    device = gv.configuracion.device
     
     gv.archi1 = open(os.path.join(gv.carpeta_seleccionada, "datos-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
     gv.archi2 = open(os.path.join(gv.carpeta_seleccionada, "intervalo-" + str(gv.configuracion.getfecha()) + ".txt"), "w+")
-    gv.archi2.write("Cant Hojas|Mediana|Percentil 25| Percentil 75| Hora\n")
+    gv.archi2.write("CantHojas,Mediana,Percentil25,Percentil75,Minimo,Maximo,Media,AreaTotal,TSE,TCT,Fecha,HoraInicio,HoraFin\n")
     
     gv.ID=-1
-    # Elegimos la camara
-    gv.model = YOLO("src/models_data/100_372.pt")
+    # Elegimos el modelo de detección
+    gv.model = YOLO("src/models_data/10-3.pt")
+    gv.model.to(device)
 
     gv.cap = cv2.VideoCapture(gv.filename)
     print(gv.configuracion)
     
-    visualizar()
-    on_pause()
-    pausa.config(state= DISABLED)
-    base_b.config(state="normal")
-    captura.config(state="normal")
+    # Inicialización del video y botones
+    gv.frameactual = 0
+    gv.frameaux = 0
     
+    # Inicializar variables para procesamiento
+    gv.entrada_coord = None
+    gv.salida_coord = None
+    gv.direccion = 'arriba_a_abajo'  # Valor por defecto
     
+    # Habilitar solo los botones de selección desde el inicio
+    UI2.getPausa().configure(state="disabled", fg_color="#2B2B2B", text="Play")
+    UI2.getBaseBlanca().configure(state="normal", fg_color="#f56767")
+    UI2.getBotonSeleccion().configure(state="normal", fg_color="#2B2B2B")
+    UI2.getBotonConv().configure(state="normal", fg_color="#2B2B2B")
+    
+    # Restablecemos los estados de configuración
+    gv.area_seleccionada = False
+    gv.entrada_salida_seleccionada = False
+    gv.conversion_seleccionada = False
+    
+    # Resetear textos de configuración
+    UI2.cambiartexto(UI2.gettxt1(), "1. Área [clic y arrastre]")
+    UI2.cambiartexto(UI2.gettxt2(), "2. E/S [dos clics]")
+    UI2.cambiartexto(UI2.gettxt3(), "3. Conv [dos clics]")
+    
+    # Mensajes iniciales actualizados
+    UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
+    
+    # Leer y mostrar el primer frame antes de poner en pausa
+    success, img = gv.cap.read()
+    if success:
+        # Guardar una copia del frame para las selecciones
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        gv.img = img_rgb.copy()
+        
+        # Redimensionar la imagen para que se ajuste a la pantalla
+        height, width = img_rgb.shape[:2]
+        ratio = 640 / width
+        new_height = int(height * ratio)
+        img_resized = cv2.resize(img_rgb, (640, new_height), interpolation=cv2.INTER_AREA)
+        
+        # Crear imagen para la interfaz
+        im = ImgPIL.fromarray(img_resized)
+        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, new_height))
+        
+        # Actualizar video en UI
+        lblVideo = UI2.getlblVideo()
+        lblVideo.configure(image=display_img)
+        lblVideo.image = display_img
+        
+        # Activar botón del área (antes deshabilitado)
+        UI2.getBaseBlanca().configure(state="normal")
+    
+    # Iniciar en pausa
+    gv.paused = True
 
-def on_pause():
+def on_pause(UI2):
     global gv
+    
+    # Verificar si todas las configuraciones están completas antes de cambiar el estado
+    if not (gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada):
+        # No permitir continuar si falta alguna configuración
+        gv.paused = True
+        UI2.getPausa().configure(text="Play", state="disabled", fg_color="#2B2B2B")
+        UI2.cambiartexto(UI2.gettxt4(), "Complete las 3 configuraciones")
+        return
+    
+    # Si todas las configuraciones están completas, proceder normalmente
     gv.paused = not gv.paused
-    if gv.paused == True:
-        pausa.config(image = imagenBI)
+    pausa = UI2.getPausa()
+    
+    if gv.paused:
+        pausa.configure(text="Play", fg_color="#4E8F69")
     else:
-        pausa.config(image = imagenBF)
-    visualizar()
+        pausa.configure(text="Pausa", fg_color="#4E8F69")
+            
+    visualizar(UI2)
 
 def detector(results, frameactual):
     if results[0].masks is None:
@@ -139,7 +221,7 @@ def detector(results, frameactual):
                 contorno, jerarquia = cv2.findContours(tmp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 for c in contorno:
                     area=cv2.contourArea(c)
-                comparar(dx, dy, xmed, ymed, area, frameactual,gv,kf)
+                comparar(dx, dy, xmed, ymed, area, frameactual, gv, kf)
 
 def capturar():
     global gv
@@ -169,34 +251,104 @@ def capturar():
             # Guardar la captura con el nombre generado
             cv2.imwrite(next_name, img)
             
-def base_blanca():  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
-    global gv, bb, primera
-    bb=True
-    primera = True
-    gv.paused=True
-    pausa.config(image = imagenBI)
-    text4.config(text="Esperando area de detección")
-    visualizar()
+def base_blanca(UI2):  # Cuando apretamos el boton ponemos el flag up, para poder seleccionar la base
+    global gv, seleccion_entrada_habilitada, seleccion_conversion
+    
+    gv.bb = True
+    seleccion_entrada_habilitada = False
+    seleccion_conversion = False
+    gv.paused = True
+    
+    # Cambiar color de botones para indicar el modo activo
+    UI2.getBaseBlanca().configure(fg_color="#f56767")  # Rojo para el botón activo
+    
+    # Respetar los colores de los botones según su estado de configuración
+    if gv.entrada_salida_seleccionada:
+        UI2.getBotonSeleccion().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    if gv.conversion_seleccionada:
+        UI2.getBotonConv().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonConv().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+    
+    # Si ya estaba seleccionada, mantenemos el check
+    if gv.area_seleccionada:
+        UI2.cambiartexto(UI2.gettxt1(), "1. Área ✓")
+    else:
+        UI2.cambiartexto(UI2.gettxt1(), "1. Área → Seleccione con clic y arrastre")
+    
+    visualizar(UI2)
 
 def base_blanca_aux(point1, point2): # Aca nada mas cargamos las variables y cambia el texto
-    global bb, gv
-    gv.y1=point1[1]
-    gv.x1=point1[0]
-    gv.y2=point2[1]
-    gv.x2=point2[0]
-    text4.config(text="Area de deteccion seleccionada ")
-    text4.config(foreground='green')
-    gv.yinicio=gv.y2 - 20
-    gv.yfinal= gv.y1 + 20
-    gv.paused=False
+    global gv
+    gv.y1 = point1[1]
+    gv.x1 = point1[0]
+    gv.y2 = point2[1]
+    gv.x2 = point2[0]
+    gv.yinicio = gv.y2 - 20
+    gv.yfinal = gv.y1 + 20
+    gv.area_seleccionada = True
     
-def habilitar_seleccion():
-    global gv, seleccion_entrada_habilitada, primera
-    primera = True
-    pausa.config(image = imagenBI)
-    seleccion_entrada_habilitada = not seleccion_entrada_habilitada
-    gv.paused=True
-    visualizar()
+def habilitar_seleccion(UI2):
+    global gv, seleccion_entrada_habilitada, seleccion_conversion
+    
+    seleccion_entrada_habilitada = True
+    seleccion_conversion = False
+    gv.bb = False
+    gv.paused = True
+    
+    # Cambiar color de botones para indicar el modo activo
+    if gv.area_seleccionada:
+        UI2.getBaseBlanca().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBaseBlanca().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    UI2.getBotonSeleccion().configure(fg_color="#f56767")  # Rojo para el botón activo
+    
+    if gv.conversion_seleccionada:
+        UI2.getBotonConv().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonConv().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+    
+    # Si ya estaba seleccionada, mantenemos el check
+    if gv.entrada_salida_seleccionada:
+        UI2.cambiartexto(UI2.gettxt2(), "2. E/S ✓")
+    else:
+        UI2.cambiartexto(UI2.gettxt2(), "2. E/S → Seleccione entrada")
+    
+    visualizar(UI2)
+
+def habilitar_conversion(UI2):
+    global gv, seleccion_conversion, seleccion_entrada_habilitada
+    
+    seleccion_conversion = True
+    seleccion_entrada_habilitada = False
+    gv.bb = False
+    gv.paused = True
+    
+    # Cambiar color de botones para indicar el modo activo
+    if gv.area_seleccionada:
+        UI2.getBaseBlanca().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBaseBlanca().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    if gv.entrada_salida_seleccionada:
+        UI2.getBotonSeleccion().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+    else:
+        UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        
+    UI2.getBotonConv().configure(fg_color="#f56767")  # Rojo para el botón activo
+    
+    # Si ya estaba seleccionada, mantenemos el check
+    if gv.conversion_seleccionada:
+        texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
+        UI2.cambiartexto(UI2.gettxt3(), texto)
+    else:
+        UI2.cambiartexto(UI2.gettxt3(), "3. Conv → Seleccione primer punto")
+    
+    visualizar(UI2)
 
 def eliminar_hojas(hojas, frame_actual):
     global gv # Hacer referencia a la variable global
@@ -206,13 +358,19 @@ def eliminar_hojas(hojas, frame_actual):
         # Obtener la última aparición de la hoja
         primer_aparicion = hoja.apariciones[0]
         ultima_aparicion = hoja.apariciones[-1]
+        bandera_superada = any(aparicion.match_count > 1 for aparicion in hoja.apariciones)
         # Si la distancia entre el frame de la última aparición y el frame actual es mayor a 15
         if frame_actual - ultima_aparicion.getframe() > gv.configuracion.getfpsapa():
             # Agregar la hoja al array de hojas perdidas
             if hoja.getcantapariciones()>gv.configuracion.getcantapa():
-                if primer_aparicion.gety() > ultima_aparicion.gety():
-                    gv.hojas_final.append(hoja)
-                else:
+                gv.valid_ID += 1 # Aumentamos el ID valido
+                if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
+                    if (primer_aparicion.gety() - ultima_aparicion.gety()) > 30:
+                        hoja.valid_id = gv.valid_ID
+                        gv.hojas_final.append(hoja)
+                        gv.hojas_final = filtrar_duplicados(gv.hojas_final)
+                elif bandera_superada==False:
+                    hoja.valid_id = gv.valid_ID
                     gv.hojas_final_sale.append(hoja)
             # Eliminar la hoja del array hojas
             del hojas[i]
@@ -240,74 +398,218 @@ def detectar_direccion_entrada_salida(punto_entrada, punto_salida):
             return 'abajo_a_arriba'  # Vertical de abajo a arriba
 
 def rotar_imagen(imagen, direccion):    # Rotamos la imagen dependiendo la direccion de entrada->salida
+    global gv
     if direccion == 'derecha_a_izquierda':
-        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    elif direccion == 'izquierda_a_derecha':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_CLOCKWISE)
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
+    elif direccion == 'izquierda_a_derecha':
+        imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     elif direccion == 'arriba_a_abajo':
         imagen_rotada = cv2.rotate(imagen, cv2.ROTATE_180)
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     else:  # 'abajo_a_arriba'
         imagen_rotada = imagen  # Ya está en la orientación deseada
+        gv.yinicio=imagen_rotada.shape[0] - 20
+        gv.yfinal= 0 + 20
     return imagen_rotada
-  
-def clicks():
-    global gv, bb, seleccion_entrada_habilitada, click_count
-    if click_count==2:
-        if bb == True and seleccion_entrada_habilitada==False:    # Si el flag de que todavia no fue seleccionada la base es True, lo que hace es llamar a la funcion
-            base_blanca_aux(gv.point1, gv.point2)
-            bb = False # Despues cambiamos el flag para que los proximos dos puntos sean para seleccionar la conversion.
-        elif seleccion_entrada_habilitada == True and bb == False:  # Selección de puntos de entrada y salida
-            gv.entrada_coord = gv.point1
-            gv.salida_coord = gv.point2
-            gv.direccion=detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
-            gv.paused=False
-            seleccion_entrada_habilitada = not seleccion_entrada_habilitada  # Cambiar bandera para evitar múltiples selecciones   
-        else:
-            # Calculate distance between two points
-            distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
-            # Display distance on GUI
-            gv.cte=(10**2)/(distance**2)
-            text2.config(text="Conv: "+ "%.2f" %gv.cte+"[mm^2/px^2]")
-        # Reset click count and points
-        click_count = 0
-        gv.point1 = None
-        gv.point2 = None
-    return gv.paused
 
+def calcular_TSE(hojas_final):
+    """
+    Calcula la Tasa de Seguimiento Exitoso.
+    
+    Args:
+        hojas_final (list): Lista de hojas con trayectorias completas
+    Returns:
+        float: Tasa de seguimiento exitoso
+    """
 
+    if not hasattr(gv, 'id_anterior'):
+        gv.id_anterior = 0
+
+    valid_ids_in_interval = gv.valid_ID - gv.id_anterior
+    tse = len(hojas_final) / valid_ids_in_interval if valid_ids_in_interval > 0 else 0.0
+
+    gv.id_anterior = gv.valid_ID
+    
+    return tse
+
+def calcular_TCT(hojas_final):
+    """
+    Calcula la Tasa de Completitud de Trayectoria.
+    
+    Esta métrica mide qué tan bien el algoritmo mantiene el seguimiento 
+    considerando la frecuencia de detección configurada.
+    
+    Returns:
+        float: Valor entre 0 y 1, donde 1 indica seguimiento perfecto
+    """
+    tasas_completitud = []
+    
+    for hoja in hojas_final:
+        # Obtener primer y último frame
+        primer_frame = hoja.apariciones[0].getframe()
+        ultimo_frame = hoja.apariciones[-1].getframe()
+        
+        # Calcular cuántas detecciones deberíamos tener
+        frames_totales = ultimo_frame - primer_frame
+        detecciones_esperadas = frames_totales / gv.configuracion.getfpsdist()
+        
+        # Cuántas detecciones realmente tenemos
+        detecciones_reales = len(hoja.apariciones)
+        
+        # Calcular tasa de completitud
+        if detecciones_esperadas > 0:
+            tasa = detecciones_reales / detecciones_esperadas
+            # Limitar a 1 en caso de que tengamos más detecciones de las esperadas
+            tasa = min(1.0, tasa)
+            tasas_completitud.append(tasa)
+    
+    # Retornar el promedio de todas las tasas
+    return np.mean(tasas_completitud) if tasas_completitud else 0.0
+
+def evaluar_seguimiento(hojas_final):
+    """
+    Evalúa el rendimiento general del sistema de seguimiento.
+    
+    Args:
+        hojas_final (list): Lista de hojas con trayectorias completas
+    Returns:
+        dict: Diccionario con las métricas calculadas
+    """
+    tse = calcular_TSE(hojas_final)
+    tct = calcular_TCT(hojas_final)
+    
+    return {
+        "Tasa_Seguimiento_Exitoso": tse,
+        "Tasa_de_Trayectorias": tct
+    }
+
+def filtrar_duplicados(hojas):
+    """
+    Filtra las hojas duplicadas incluyendo aquellas que tienen patrones de duplicación
+    """
+    hojas_filtradas = []
+    hojas_a_descartar = set()
+    
+    for i, hoja1 in enumerate(hojas):
+        if hoja1.getID() in hojas_a_descartar:
+            continue
+            
+        duplicados_encontrados = 0  # Contador de duplicados para esta hoja
+        
+        for j, hoja2 in enumerate(hojas[i+1:], i+1):
+            ult_apar1 = hoja1.apariciones[-1]
+            ult_apar2 = hoja2.apariciones[-1]
+            
+            # Verificamos frames cercanos
+            if abs(ult_apar1.getframe() - ult_apar2.getframe()) <= 5:
+                dist = math.hypot(ult_apar1.getx() - ult_apar2.getx(), 
+                                ult_apar1.gety() - ult_apar2.gety())
+                if dist < 5:
+                    duplicados_encontrados += 1
+                    hojas_a_descartar.add(hoja1.getID())
+                    hojas_a_descartar.add(hoja2.getID())
+                    
+        # Si la hoja tiene más de un duplicado, la marcamos para eliminar
+        if duplicados_encontrados > 1:
+            hojas_a_descartar.add(hoja1.getID())
+    
+    # Filtramos las hojas
+    hojas_filtradas = [hoja for hoja in hojas if hoja.getID() not in hojas_a_descartar]
+    
+    return hojas_filtradas
 
 def escribirarchivo(hojas_final, hojas_final_sale, bandera):
-    
     global gv
     gv.estadisticas = []
+    
     if bandera == 0:
-        #gv.archi1.write("header: ")
-        gv.archi1.write(gv.configuracion.__json__())
-        #gv.archi1.write("\n")
         for item in hojas_final:
             for aparicion in item.apariciones:
-#                gv.archi1.write(str(item.id)+ "|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ 
-#                             str(aparicion.getxp()) +"|"+ str(aparicion.getyp()) +"|"+str(aparicion.getarea())+"|"+ str(aparicion.getframe())+"\n")
-                 gv.archi1.write('{"id":'+str(item.id)+',"x":'+str(aparicion.getx())+',"y":'+str(aparicion.gety())+',"xp":'+str(aparicion.getxp())+', "yp":'+str(aparicion.getyp())+',"area":'+str(aparicion.getarea())+',"frame":'+str(aparicion.getframe())+'},')
-                        
-        
+                gv.archi1.write(str(item.valid_id)+"|"+str(aparicion.getx()) +"|"+ 
+                               str(aparicion.gety()) +"|"+ str(aparicion.getxp()) +"|"+ 
+                               str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ 
+                               str(aparicion.getframe())+"\n")
+    
     if bandera == 1:
-        cont=0
-        areaitem=0
         gv.archi2.seek(0, 2)
         
-        # Guardamos en gv.estadisticas los valores estadisticos de cada area de la hoja siempre y cuando la hoja este entre el tiempo determinado
-        gv.estadisticas = [item.getarea() for item in hojas_final if (gv.garch - gv.configuracion.gettiempo()) < (item.apariciones[0].getframe() / (30 * 60)) < gv.garch] 
+        # Obtener estadísticas de las hojas en el intervalo de tiempo
+        gv.estadisticas = [item.getarea() for item in hojas_final 
+                          if (gv.garch - gv.configuracion.gettiempo()) < 
+                          (item.apariciones[0].getframe() / (30 * 60)) < gv.garch] 
 
-        if len(gv.estadisticas) >0: #Si hay objetos en gv.estadisticas calculamos el promedio y lo guardamos.
+        # Calcular métricas de seguimiento incluso si no hay hojas
+        metricas = evaluar_seguimiento(hojas_final)
+        tse = metricas["Tasa_Seguimiento_Exitoso"]
+        tct = metricas["Tasa_de_Trayectorias"]
+
+        minutos_transcurridos = int(gv.garch)
+        hora_inicial = gv.configuracion.gethora()
+        hora_fin = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
+        hora_inicio = hora_fin - datetime.timedelta(minutes=gv.configuracion.gettiempo())
+
+        fecha_inicial_str = gv.configuracion.getfecha()
+
+        # Convertir la fecha de string a objeto datetime
+        try:
+            # Asumiendo formato DD-MM-YYYY
+            dia, mes, anio = map(int, fecha_inicial_str.split('-'))
+            fecha_inicial = datetime.datetime(anio, mes, dia)
             
-            area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte # Calcula el flujo promedio de areas em mm^2
+            # Crear datetime completos para inicio y fin (fecha + hora)
+            dt_inicio = fecha_inicial + hora_inicio
+            dt_fin = fecha_inicial + hora_fin
+            
+            # Formatear las fechas y horas
+            fecha_str = dt_fin.strftime("%d-%m-%Y")
+            hora_inicio_str = dt_inicio.strftime("%H:%M")
+            hora_fin_str = dt_fin.strftime("%H:%M")
+            
+        except ValueError:
+            # En caso de error en el formato de fecha, usar valores por defecto
+            fecha_str = fecha_inicial_str
+            hora_inicio_str = f"{hora_inicio.days * 24 + hora_inicio.seconds // 3600:02d}:{(hora_inicio.seconds // 60) % 60:02d}"
+            hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
+
+        # Si hay estadísticas, usar valores calculados, si no hay, usar 0
+        if len(gv.estadisticas) > 0:
+            area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte
             area_percentil25 = np.mean([item['percentil25'] for item in gv.estadisticas])*gv.cte
             area_percentil75 = np.mean([item['percentil75'] for item in gv.estadisticas])*gv.cte
-            
-            
-            gv.archi2.write(str(len(gv.estadisticas))+"|"+str(area_mediana)+"|"+str(area_percentil25)+"|"+str(area_percentil75)+"|")
-        gv.archi2.write(str(gv.garch-gv.configuracion.gettiempo())+"|"+str(gv.garch)+"\n")
+            area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
+            area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
+            area_media = np.mean([item['media'] for item in gv.estadisticas])*gv.cte
+            area_total = sum([item['media'] for item in gv.estadisticas])*gv.cte  # Suma de todas las áreas medias
+            cant_hojas = len(gv.estadisticas)
+        else:
+            # Si no hay hojas en este intervalo, todos los valores son 0
+            area_mediana = 0.0
+            area_percentil25 = 0.0
+            area_percentil75 = 0.0
+            area_maxima = 0.0
+            area_minima = 0.0
+            area_media = 0.0
+            area_total = 0.0
+            cant_hojas = 0
+
+        # Escribir en el archivo siempre, independientemente de si hay datos o no
+        gv.archi2.write(f"{cant_hojas},{area_mediana:.2f},{area_percentil25:.2f},"
+           f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
+           f"{area_media:.2f},{area_total:.2f},"
+           f"{tse:.2f},{tct:.2f}," 
+           f"{fecha_str},{hora_inicio_str},{hora_fin_str}\n")
+        
+        if not hasattr(gv, 'total_hojas'):
+            gv.total_hojas = 0
+        gv.total_hojas += len(hojas_final)
+        
+        # Limpiar la lista de hojas
+        gv.hojas_final.clear()
 
 
     # archi1.write("Saliente: \n")
@@ -317,152 +619,131 @@ def escribirarchivo(hojas_final, hojas_final_sale, bandera):
 
     
 
-def visualizar():
-        global gv
-        if gv.cap is not None:
-            global configuracion
-            # Read a frame from the video
-            gv.paused=clicks()
-            if gv.paused==False:
-                gv.frameactual+=1
-                success, img = gv.cap.read()
-                if success:
-                    frame = img[gv.y1: gv.y2, gv.x1:gv.x2]
-                    #dim=(640,640)
-                    #frame = cv2.resize(frame, dim, interpolation = cv2.INTER_AREA)
-                    frame = rotar_imagen(frame, gv.direccion)
-                    # Run YOLOv8 inference on the frame
-                    results = gv.model.predict(frame, conf=gv.configuracion.getconf())
-                    # Visualize the results on the frame
-                    #gv.annotated_frame = results[0].plot(show=True)
-                    if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
-                        detector(results, gv.frameactual)
-                        gv.frameaux=gv.frameactual
-                    
-                    sec=gv.frameactual/gv.configuracion.getfps()
-                    s=datetime.timedelta(seconds=int(sec))
-                    hora = gv.configuracion.gethora()+s
-                    text6.config(text=str(hora))
-                    
-                    gv.garch = sec/60
-                    
-                    if (gv.garch % gv.configuracion.gettiempo()) == 0:
-                        textdebug.config(text="Guarde " + str(gv.garch) + " veces")
-                        escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
-                        # escribimos el archivo del promedio de area en el intervalo de tiempo dado.
-                        
-                    #cv2.putText(img, "Hoja "+str(ID+1), (400, 50 - 5), cv2.FONT_HERSHEY_PLAIN, 1, (0, 255, 255),2)  
-                    gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
-                    
-                    
-                    text1.config(text="Hoja "+str(len(gv.hojas_final))+" "+str(gv.ID)+"\nSaliente: "+str(len(gv.hojas_final_sale)))
+def visualizar(UI2):
+    """
+    Función principal para visualizar y procesar el video
+    Args:
+        UI2: Objeto de la interfaz de usuario
+    """
+    if gv.cap is None:
+        return
 
-                    # area=calculararea(gv.hojas_final)
-                    # area=area*gv.cte
-                    # text3.config(text="Area:  "+"%.2f" %area + " [mm^2]")
-                    
-                    for i in range(len(gv.hojas_final)):
-                        hoja=gv.hojas_final[i]
-                        r = 0
-                        g = 255
-                        b = 0
-                        for j in range(3, len(hoja.apariciones)-1):       #Dibujamos la trayectoria de hormiga y la trayectoria predicha
-                            xi=hoja.apariciones[j].getx()+gv.x1
-                            yi=hoja.apariciones[j].gety()+gv.y1
-                            xf=hoja.apariciones[j+1].getx()+gv.x1
-                            yf=hoja.apariciones[j+1].gety()+gv.y1
-                            cv2.line(img,(xi,yi),(xf,yf),(r,g,b),1)
-                   
-                    
-                    
-                    cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
-                    cv2.line(img,(gv.x1,gv.yfinal),(gv.x2,gv.yfinal),(255,255,255),1)
-                    cv2.line(img,(gv.x1,gv.yinicio),(gv.x2,gv.yinicio),(255,255,255),1)
-                    cv2.circle(img, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)  # (0, 255, 0) es verde en BGR
-                    cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)  # (0, 0, 255) es rojo en BGR
+    if not gv.paused:
+        try:
+            # Lectura del frame
+            success, img = gv.cap.read()
+            if not success:
+                handle_end_of_video(UI2, gv)
+                return
 
-                    
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
-                    # Convertimos el video
-                    img = imutils.resize(img, width=640)
-                    im = ImgPIL.fromarray(img)
-                    img = ImageTk.PhotoImage(image=im)
-                    
-                    # img2 = cv2.cvtColor(gv.annotated_frame, cv2.COLOR_BGR2RGB)
-                    # im2 = ImgPIL.fromarray(img2)
-                    # img2 = ImageTk.PhotoImage(image=im2)
+            # Incrementar contador de frames
+            gv.frameactual += 1
 
-                    #cv2.imshow("YOLO", gv.annotated_frame)
-                    
-                    # Mostramos en el GUI
-                    lblVideo.configure(image=img)
-                    lblVideo.image = img
-                    
-                    
-                    #if gv.frameactual >2:
-                        #lblVideoYOLO.configure(image=img2)
-                        #lblVideoYOLO.image = img2
-                    
-                    # Actualizar la barra de progreso
-                    current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
-                    total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
-                    progress = current_frame / total_frames * 100
-                    gv.progress_bar['value'] = progress
-                    
-                    lblVideoYOLO.config(highlightbackground='red', highlightthickness=2)
-                   
-                    
-                    lblVideo.after(10, visualizar)
-                else:
-                    gv.cap.release()
-                    if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
-                        text1.config(text="Hoja "+str(gv.ID+1)+"Finalizado")
-                        escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
-                        gv.archi1.write("]]")
-                        gv.archi1.close()
-                        gv.archi2.close()
-                        cv2.destroyAllWindows()
-                        #Exportar datos
-                    else:
-                        gv.filename=gv.filenames[gv.filenames.index(gv.filename)+1]
-                        gv.cap = cv2.VideoCapture(gv.filename)
-                        visualizar()
+            # Procesar frame solo en el área seleccionada
+            frame = img[gv.y1:gv.y2, gv.x1:gv.x2]
+            frame = rotar_imagen(frame, gv.direccion)
 
+            # Procesar detecciones YOLO solo cuando sea necesario
+            if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
+                # Usar la confianza de configuración para reducir falsos positivos
+                results = gv.model.predict(frame, conf=gv.configuracion.getconf(), verbose=False)
+                gv.annotated_frame = results[0].plot()
+                detector(results, gv.frameactual)
+                gv.frameaux = gv.frameactual
+
+            # Cálculos de tiempo
+            sec = gv.frameactual / gv.configuracion.getfps()
+            s = datetime.timedelta(seconds=int(sec))
+            hora = gv.configuracion.gethora() + s
             
+            # Actualizar UI de manera eficiente
+            UI2.cambiartexto(UI2.gettxt5(), str(hora))
+            UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
 
-def crear_barra_progreso():
-            global gv
-            gv.progress_bar = ttk.Progressbar(pestania2, orient=HORIZONTAL, length=640, mode='determinate')
-            gv.progress_bar.place(x=80, y=515)
+            # Manejo de guardado automático
+            gv.garch = sec / 60
+            tiempo_guardado = float(gv.configuracion.gettiempo())
+            if tiempo_guardado > 0 and abs(gv.garch % tiempo_guardado) < 0.01:  # Tolerancia para evitar problemas de punto flotante
+                escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
+                escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
 
-def on_click(event):
-            global gv, primera
-            global click_count, point1, point2
-            if click_count==0:
-                gv.point1 = (event.x, event.y)
-                click_count += 1
-            elif click_count==1:
-                gv.point2 = (event.x, event.y)
-                click_count += 1
-                if primera == True:
-                    on_pause()
-                    pausa.config(state= NORMAL)
-                    primera = False
-                
+            # Procesar hojas
+            gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
 
+            # Dibujar elementos visuales solo en la imagen original
+            cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
+            cv2.line(img, (gv.x1, gv.yfinal), (gv.x2, gv.yfinal), (255, 255, 255), 1)
+            cv2.line(img, (gv.x1, gv.yinicio), (gv.x2, gv.yinicio), (255, 255, 255), 1)
+            
+            # Dibujar puntos de entrada/salida solo si están definidos
+            if gv.entrada_coord:
+                cv2.circle(img, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)
+            if gv.salida_coord:
+                cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
+
+            # Optimización: Convertir y redimensionar la imagen una sola vez
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            gv.img = img_rgb.copy()  # Guardar copia solo si es necesario
+            
+            # Redimensionar la imagen para que se ajuste a la pantalla
+            height, width = img_rgb.shape[:2]
+            ratio = 640 / width
+            new_height = int(height * ratio)
+            img_resized = cv2.resize(img_rgb, (640, new_height), interpolation=cv2.INTER_AREA)
+            
+            # Crear imagen para la interfaz
+            im = ImgPIL.fromarray(img_resized)
+            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, new_height))
+
+            # Actualizar video en UI
+            lblVideo = UI2.getlblVideo()
+            lblVideo.configure(image=display_img)
+            lblVideo.image = display_img
+
+            # Actualizar barra de progreso
+            if gv.frameactual % 5 == 0:  # Actualizar cada 5 frames para reducir carga
+                current_frame = gv.cap.get(cv2.CAP_PROP_POS_FRAMES)
+                total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+                progress = current_frame / total_frames
+                UI2.getProgressBar().set(progress)
+
+            # Programar siguiente frame con un intervalo adecuado para mantener fluidez
+            lblVideo.after(1, lambda: visualizar(UI2))
+
+        except Exception as e:
+            print(f"Error en visualizar: {e}")
+            if gv.cap is not None:
+                gv.cap.release()
+            cv2.destroyAllWindows()
+
+def handle_end_of_video(UI2, gv):
+    """
+    Maneja el final del video actual
+    """
+    gv.cap.release()
+    if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
+        gv.archi1.close()
+        gv.archi2.close()
+        cv2.destroyAllWindows()
+    else:
+        gv.filename = gv.filenames[gv.filenames.index(gv.filename)+1]
+        gv.cap = cv2.VideoCapture(gv.filename)
+        visualizar(UI2)
 
 
 # Variables
 
-gv.font=cv2.FONT_HERSHEY_SIMPLEX #Variable de texto que puede ser usada en opencv
+gv.font=cv2.FONT_HERSHEY_SIMPLEX 
+gv.total_hojas=0
 gv.frameactual=0
 gv.frameaux=0
 gv.cte=0
-bb=False
+gv.bb=False
 kf=[]
 kf.append(KalmanFilter())
 yfinalaux= 240
 gv.ID=-1
+gv.valid_ID=0
 gv.x1=0
 gv.x2=640
 gv.y1=0
@@ -481,270 +762,756 @@ gv.entrada_coord = None
 gv.salida_coord = None
 gv.direccion= None
 seleccion_entrada_habilitada = False
+seleccion_conversion = False
 
 
 
 
 
+# Clase principal de la aplicación
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
+        # Configuración de la ventana principal
+        self.title("GUI | CUSTOMTKINTER | HOJAS")
+        self.geometry("1024x640")
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("assets/marsh.json")
+        
+        # Configuración de las pestañas
+        self.pestanias = MyTabView(master=self)
+        self.pestanias.pack(expand=True, fill='both')
 
-#Pantalla principal
-pantalla=Toplevel()
-pantalla.title("GUI | TKINTER | HOJAS")
-pantalla.geometry("1024x640")
+        # Agregar protocolo de cierre
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-
-#---------------------Configuracion de pestañas de la interfaz principal---------------------------
-pestanias = Notebook(pantalla)
-
-pestania1=Frame(pestanias)
-pestania2=Frame(pestanias)
-
-
-pestanias.add(pestania1, text="Init")
-pestanias.add(pestania2, text="Pantalla Video")
-
-
-pestanias.pack(expand=True, fill='both')
-
-
-# Fondo
-imagenF = PhotoImage(file="assets/Fondo.png")
-background = Label(image = imagenF, text = "Fondo")
-background.place(x = 0, y = 0, relwidth = 1, relheight = 1)
-
-
-
-#---------------------Configuracion de botones de la interfaz principal---------------------------
-# Iniciar Video
-imagenBA = PhotoImage(file="assets/Abrir.png")
-inicio = Button(pestania2, text="Iniciar",  command=iniciar)
-inicio.place(x = 100, y = 580)
-
-# Pausar/Reanudar Video
-imagenBI = PhotoImage(file="assets/Inicio.png")
-imagenBF = PhotoImage(file="assets/Finalizar.png")
-pausa = Button(pestania2, text="Pausar",  command=on_pause)
-pausa.place(x = 180, y = 580)
-pausa.config(state="disabled")
-
-# Capturar Frame
-imagenBC = PhotoImage(file="assets/Capturar.png")
-captura = Button(pestania2, text="Capturar",  command=capturar)
-captura.place(x = 260, y = 580)
-captura.config(state="disabled")
-
-imagenBB = PhotoImage(file="assets/cuadrado.png")
-base_b = Button(pestania2, text="Cuadrado",  command=base_blanca)
-base_b.place(x = 340, y = 580)
-base_b.config(state="disabled")
-
-boton_seleccion = tk.Button(pestania2, text="Selección de Entrada y Salida", command=habilitar_seleccion)
-boton_seleccion.place(x = 420, y = 580)
+    def on_closing(self):
+        """Maneja el cierre de la aplicación"""
+        try:
+            # Limpiar recursos de matplotlib
+            tab3 = self.pestanias.tab("Análisis").winfo_children()[0]
+            if isinstance(tab3, Tab3):
+                tab3.cleanup()
+                
+            # Cerrar la aplicación
+            self.quit()
+            self.destroy()
+        except:
+            self.quit()
+            self.destroy()
+        
 
 
 
-#---------------------Configuracion de textos de la interfaz principal---------------------------
-text1 = Label(pestania2, text="Hoja "+str(gv.ID+1), font=("Cambria bold", 14))
-text1.grid(row=0, column=1, padx=730, pady=(200,10), sticky="w")
+class MyTabView(ctk.CTkTabview):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, anchor="w", **kwargs)
 
-text2 = Label(pestania2, text="Distancia de conversion: ", font=("Cambria bold", 14))
-text2.grid(row=1, column=1, padx=730, pady=10, sticky="w")
+        #Creamos las pestañas
+        #self.configure(state="disabled")
+        self.add("Init")
+        self.add("Pantalla Video")
+        self.add("Análisis")
 
-text3 = Label(pestania2, text="Area ", font=("Cambria bold", 14))
-text3.grid(row=2, column=1, padx=730, pady=10, sticky="w")
+        # add widgets on tabs
+        self.tab("Init").configure(border_width=0)  # Opcional, para estandarizar el estilo
+        Tab1(self.tab("Init"), parent=self)
 
-text4 = Label(pestania2, text="Seleccione el area de detección", font=("Cambria bold", 14))
-text4.grid(row=3, column=1, padx=730, pady=10, sticky="w")
-text4.config(foreground='red')
+        self.tab("Pantalla Video").configure(border_width=0)  # Opcional
+        Tab2(self.tab("Pantalla Video"))
 
-textdebug = Label(pestania2, text="Para debug", font=("Cambria bold", 14))
-textdebug.grid(row=4, column=1, padx=730, pady=10, sticky="w")
+        self.tab("Análisis").configure(border_width=0)
+        Tab3(self.tab("Análisis"))  # Nueva clase Tab3
+        
 
-text6 = Label(pestania2, text="", font =("Cambria bold", 12))
-text6.place(x=720, y = 515)
+    def habilitar_tabs(self):
+        self.configure(state="normal")
 
+    def siguiente(self, nombre_pest):
+        self.set(nombre_pest)
 
-#---------------------Configuracion del video en la interfaz---------------------------
-lblVideo = Label(pestania2)
-lblVideo.place(x = 80, y = 30)
+# Clase para la primera pestaña
+class Tab1(ctk.CTkFrame):
+    def __init__(self, master, parent=None):
+        super().__init__(master)
+        # Configuración de los widgets de la pestaña 1
+        self.parent=parent
+        imagenQ = ctk.CTkImage(light_image=ImgPIL.open('assets/interrogatorio_2.png'),
+                                     dark_image=ImgPIL.open('assets/interrogatorio_2.png'),
+                                     size=(16,16))
+        
+        self.fechastring = tk.StringVar(value="01-01-1970")
+        self.horastring = ctk.StringVar(value="00:00")
+        self.fpstring = ctk.IntVar(value=30)
+        self.fpsdisstring = ctk.IntVar(value=2)
+        self.fpsapastring = ctk.IntVar(value=15)
+        self.confstring = ctk.DoubleVar(value=0.6)
+        self.cantstring = ctk.IntVar(value=10)
+        self.tiemstring = ctk.DoubleVar(value=10)
 
+        devicet = ctk.CTkLabel(self, text="Dispositivo:").grid(row=8, column=0, sticky="w")
+        self.devices = ['cpu']  # Siempre incluir CPU
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                self.devices.append(f"cuda:{i} ({torch.cuda.get_device_name(i)})")
+        
+        # Variable para almacenar el dispositivo seleccionado
+        self.device_var = ctk.StringVar(value=self.devices[0])
+        
+        # Menú desplegable para dispositivos
+        self.device_menu = ctk.CTkOptionMenu(self, values=self.devices, variable=self.device_var, width=150,fg_color=("#5E7B6B", "#5E7B6B"), dropdown_fg_color=("#5E7B6B", "#5E7B6B"), dropdown_hover_color=("#397F5A", "#397F5A"), dropdown_text_color=("white", "white"))
+        self.device_menu.grid(row=8, column=1, sticky="w")
 
-lblVideoYOLO = Label(pestania2)
-lblVideoYOLO.place(x = 730, y = 30)
+        deviceq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        deviceq.grid(row=8, column=2, sticky="w", padx=5)
+        self.crear_toolTip(deviceq, 'Selecciona el dispositivo de procesamiento para el modelo.\nCPU: Procesamiento en CPU\nCUDA: Procesamiento en GPU')
 
-pestanias.tab(1, state="disable")
-crear_barra_progreso()
+        # Funciones de validación
+        self.vcmd_int = (self.register(lambda P: self.callback('int', P)), '%P')
+        self.vcmd_float = (self.register(lambda P: self.callback('float', P)), '%P')
+        
+        
+        #Widgets de fecha
+        fechat = ctk.CTkLabel(self, text="Fecha:")
+        fechat.grid(row=0, column=0, sticky="w")
+        fecha = ctk.CTkEntry(self, textvariable=self.fechastring, width=150)
+        fecha.grid(row=0, column=1, sticky="w")
+        fechaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fechaq.grid(row=0, column=2, sticky="w", padx=5)
 
+        self.crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
+        
+        #Widget de hora
+        horat = ctk.CTkLabel(self, text="Hora:").grid(row=1, column=0, sticky=W)
+        hora = ctk.CTkEntry(self, textvariable = self.horastring, width=150).grid(row=1, column=1, sticky=W)
+        horaq = ctk.CTkButton(self,fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        horaq.grid(row=1, column=2, sticky=W, padx=5)
+        self.crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
 
-  
+        fpst = ctk.CTkLabel(self, text="FPS:").grid(row=2, column=0, sticky="w")
+        FPS = ctk.CTkEntry(self, textvariable=self.fpstring, width=150, validatecommand=self.vcmd_int)
+        FPS.grid(row=2, column=1, sticky="w")
+        fpsq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fpsq.grid(row=2, column=2, sticky="w", padx=5)
+        self.crear_toolTip(fpsq, 'FPS del vídeo')
+        
+        fpsdist = ctk.CTkLabel(self, text="Distancia de Frames:").grid(row=3, column=0, sticky="w")
+        fpsdis = ctk.CTkEntry(self, textvariable=self.fpsdisstring, width=150, validate="key", validatecommand=self.vcmd_int)
+        fpsdis.grid(row=3, column=1, sticky="w")
+        fpsdisq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fpsdisq.grid(row=3, column=2, sticky="w", padx=5)
+        self.crear_toolTip(fpsdisq, 'Distancia entre frames de detección, cuanto mayor sea este numero\nmas rapido será el procesamiento a cambio de un mayor error')
 
-# Fecha
-# Hora
-# FPS
-# Frames de distancia
-# Cant frames sin aparicion
-# Confianza
-# Minima cantidad de apariciones
-# Tiempo de guardado
+        fpsapat = ctk.CTkLabel(self, text="Frames aparición:").grid(row=4, column=0, sticky="w")
+        fpsapa = ctk.CTkEntry(self, textvariable=self.fpsapastring, width=150, validate="key", validatecommand=self.vcmd_int)
+        fpsapa.grid(row=4, column=1, sticky="w")
+        fpsapaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        fpsapaq.grid(row=4, column=2, sticky="w", padx=5)
+        self.crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección.\nSe recomienda no utilizar un valor mayor al de FPS')
 
-def msgBox():
+        conft = ctk.CTkLabel(self, text="Confianza:").grid(row=5, column=0, sticky="w")
+        conf = ctk.CTkEntry(self, textvariable=self.confstring, width=150, validate="key", validatecommand=self.vcmd_float)
+        conf.grid(row=5, column=1, sticky="w")
+        confq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        confq.grid(row=5, column=2, sticky="w", padx=5)
+        self.crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos,\npero se perderán detecciones')
+
+        cantapat = ctk.CTkLabel(self, text="Cantidad de apariciones:").grid(row=6, column=0, sticky="w")
+        cantapa = ctk.CTkEntry(self, textvariable=self.cantstring, width=150, validate="key", validatecommand=self.vcmd_int)
+        cantapa.grid(row=6, column=1, sticky="w")
+        cantapaq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        cantapaq.grid(row=6, column=2, sticky="w", padx=5)
+        self.crear_toolTip(cantapaq, 'Cantidad de apariciones mínimas necesarias para dar por positiva la completa detección')
+
+        tiemt = ctk.CTkLabel(self, text="Tiempo de guardado:").grid(row=7, column=0, sticky="w")
+        tiem = ctk.CTkEntry(self, textvariable=self.tiemstring, width=150, validate="key", validatecommand=self.vcmd_float)
+        tiem.grid(row=7, column=1, sticky="w")
+        tiemq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        tiemq.grid(row=7, column=2, sticky="w", padx=5)
+        self.crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
+
+        select = ctk.CTkLabel(self, text="Carpeta de guardado").grid(row=9, column=0, sticky="w")
+        boton_seleccionar_carpeta = ctk.CTkButton(self, text="Seleccionar Carpeta", command=lambda: seleccionar_carpeta(self))
+        boton_seleccionar_carpeta.grid(row=9, column=1, sticky="w")
+        selecq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        selecq.grid(row=9, column=2, sticky="w", padx=5)
+        self.crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
+
+        self.botonok = ctk.CTkButton(self, text="Confirmar", command=self.guardar)
+        self.botonok.grid(row=10, column=0, sticky=W)
+        self.botonok.configure(state="disabled")
+
+        self.pack(expand=True, fill='both')
+
+    def cambiar_estado(self):
+        self.botonok.configure(state="normal")
     
-    msg.showerror('Error!', 'Error en los parametros de configuracion')
+    def msgBox():
+        msg.showerror('Error!', 'Error en los parametros de configuracion')
     
-def crear_toolTip(widget, text):
-    toolTip = ToolTip(widget)
-    def enter(event):
-        toolTip.show_tip(text)
-    def leave(event):
-        toolTip.hide_tip()
-    widget.bind('<Enter>', enter)
-    widget.bind('<Leave>', leave)
-
-def guardar():      #Guardamos en el objeto configuracion los valores ingresados en las entradas
-     global gv
-     h, m = horastring.get().split(':')
-     d = datetime.timedelta(hours=int(h), minutes=int(m))
-     if fpstring.get() == 0 or fpsdisstring.get()== 0 or confstring.get()==0 or confstring.get()>1 or cantstring.get()==0 or tiemstring.get()==0:
-         msgBox()
-         return 0
-     
-     print(d)
-     gv.configuracion = Configuracion(fechastring.get(), d, fpstring.get(),fpsdisstring.get(), fpsapastring.get(), confstring.get(), cantstring.get(), tiemstring.get())
-     pestanias.tab(1, state="normal")
-     pestanias.select(pestania2)
-
-
-def validar_input(tipo, input):
-    if tipo == 'int':
-        return input.isdigit() or input == ""
-    elif tipo == 'float':
-        return input.replace('.', '', 1).isdigit() or input == ""    
-
-def callback(tipo, P):
-    return validar_input(tipo, P)
+    def crear_toolTip(self, widget, texto):
+        toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.3, bg_color="#000000", width=150)
+        
+    def guardar(self):      #Guardamos en el objeto configuracion los valores ingresados en las entradas
+            global gv
+            h, m = self.horastring.get().split(':')
+            d = datetime.timedelta(hours=int(h), minutes=int(m))
+            if self.fpstring.get() == 0 or self.fpsdisstring.get()== 0 or self.confstring.get()==0 or self.confstring.get()>1 or self.cantstring.get()==0 or self.tiemstring.get()==0:
+                self.msgBox()
+                return 0
+            
+            selected_device = self.device_var.get().split()[0]
+            print(d)
+            gv.configuracion = Configuracion(
+                self.fechastring.get(),
+                d,
+                self.fpstring.get(),
+                self.fpsdisstring.get(),
+                self.fpsapastring.get(),
+                self.confstring.get(),
+                self.cantstring.get(),
+                self.tiemstring.get(),
+                selected_device
+            )
+            print(gv.configuracion)
+            self.parent.habilitar_tabs()
+            self.parent.siguiente("Pantalla Video")
 
 
+    def validar_input(self, tipo, input):
+        if tipo == 'int':
+            return input.isdigit() or input == ""
+        elif tipo == 'float':
+            return input.replace('.', '', 1).isdigit() or input == ""    
+    
+    def callback(self, tipo, P):
+        return self.validar_input(tipo, P)
+    
 
-imagenQ = PhotoImage(file="assets/interrogatorio.png")
+# Clase para la segunda pestaña
+class Tab2(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
 
+        self.my_font = ctk.CTkFont(family="Calibri", size=18, 
+                                             weight="bold") #weight bold/normal, slant=italic/roman
+        self.my_font2 = ctk.CTkFont(family="Calibri", size=12, 
+                                             weight="bold") #weight bold/normal, slant=italic/roman
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure((0,1), weight=1)
 
-#Configuracion del grid
-# Grid.rowconfigure(pestania1,0,weight=1)  #Configuramos el grid para ordenar los objetos dentro de la ventana
-# Grid.columnconfigure(pestania1,0,weight=1)
+        self.FrameVideo=ctk.CTkFrame(self)
+        self.FrameVideo.grid(row=0, column=0, padx=0, pady=(5, 5), sticky="nsew")
 
-# Grid.rowconfigure(pestania1,1,weight=1)
+        self.FrameBtn=ctk.CTkFrame(self)
+        self.FrameBtn.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="nsew")
 
-fechastring=tk.StringVar()      #Configuramos el texto variable de cada entrada y lo seteamos a un valor por defecto
-fechastring.set("01-01-1970")
-
-horastring=tk.StringVar()
-horastring.set("00:00")
-
-fpstring=tk.IntVar()
-fpstring.set(30)
-
-fpsdisstring=tk.IntVar()
-fpsdisstring.set(2)
-
-fpsapastring=tk.IntVar()
-fpsapastring.set(15)
-
-confstring=tk.DoubleVar()
-confstring.set(0.6)
-
-cantstring=tk.IntVar()
-cantstring.set(10)
-
-tiemstring=tk.DoubleVar()
-tiemstring.set(10)
-
-#Funciones callback para restringir los tipos de datos de cada entrada y evitar errores del usuario
-vcmd_int = (pestania1.register(lambda P: callback('int', P)), '%P')
-vcmd_float = (pestania1.register(lambda P: callback('float', P)), '%P')
+        self.FrameTxt=ctk.CTkFrame(self, width=280, height= 490, fg_color="transparent")
+        self.FrameTxt.grid(row=0, column=1, padx=5, pady=(5, 5), sticky="nsew")
 
 
-fechat = Label(pestania1, text="Fecha:").grid(row=0, column=0, sticky=W) #Creamos el texto de cada entrada
-fecha = Entry(pestania1, textvariable = fechastring, width=10).grid(row=0, column=1, sticky=W)   #Creamos la entrada de cada variable
-fechaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fechaq.grid(row=0, column=2, sticky=W, padx=5)
-crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
+        # Configuración de los widgets de la pestaña 2
+        self.lblVideo = ctk.CTkLabel(self.FrameVideo, text="")
+        self.lblVideo.configure(width=640, height=480)
+        self.lblVideo.grid(row=0, column=0,sticky="")
+        self.lblVideo.bind("<Button-1>", self.on_click)
 
-horat = Label(pestania1, text="Hora:").grid(row=1, column=0, sticky=W)
-hora = Entry(pestania1, textvariable = horastring, width=10).grid(row=1, column=1, sticky=W)
-horaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-horaq.grid(row=1, column=2, sticky=W, padx=5)
-crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
+        self.progress_bar = ctk.CTkProgressBar(self.FrameVideo, orientation=HORIZONTAL, width=640, mode='determinate')
+        self.progress_bar.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="")
+        self.progress_bar.set(0)
 
+        self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", width=96.6, command=lambda: iniciar(self))
+        self.inicio.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-fpst = Label(pestania1, text="FPS:").grid(row=2, column=0, sticky=W)
-FPS = Entry(pestania1, textvariable = fpstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=2, column=1, sticky=W)
-fpsq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fpsq.grid(row=2, column=2, sticky=W, padx=5)
-crear_toolTip(fpsq, 'FPS del vídeo')
+        self.base_b = ctk.CTkButton(self.FrameBtn, text="Area de Detec.", width=96.6, command=lambda: base_blanca(self))
+        self.base_b.grid(row=0, column=3, padx=5, pady=(10, 10), sticky="ew")
+        self.base_b.configure(state="disabled")
 
+        self.pausa = ctk.CTkButton(self.FrameBtn, text="Pausar", width=96.6, command=lambda: on_pause(self))
+        self.pausa.grid(row=0, column=1, padx=5, pady=(10, 10), sticky="ew")
+        self.pausa.configure(state="disabled")
 
-fpsdist = Label(pestania1, text="Distancia de Frames:").grid(row=3, column=0, sticky=W)
-fpsdis = Entry(pestania1, textvariable = fpsdisstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=3, column=1, sticky=W)
-fpsdisq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fpsdisq.grid(row=3, column=2, sticky=W, padx=5)
-crear_toolTip(fpsdisq, 'Distancia entre frames de detección, cuanto mayor sea este numero\nmas rapido será el procesamiento a cambio de un mayor error')
+        self.boton_seleccion = ctk.CTkButton(self.FrameBtn, text="↑ ↓", width=96.6, command= lambda: habilitar_seleccion(self))
+        self.boton_seleccion.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
 
+        self.boton_conv = ctk.CTkButton(self.FrameBtn, text="Conversion", width=96.6, command= lambda: habilitar_conversion(self))
+        self.boton_conv.grid(row=0, column=4, padx=5, pady=(10, 10), sticky="ew")
 
-fpsapat = Label(pestania1, text="Frames aparicion:").grid(row=4, column=0, sticky=W)
-fpsapa = Entry(pestania1, textvariable = fpsapastring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=4, column=1, sticky=W)
-fpsapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-fpsapaq.grid(row=4, column=2, sticky=W, padx=5)
-crear_toolTip(fpsapaq, 'Cantidad de frames que deben pasar para dar por terminada una detección. Se recomienda no utilizar un valor mayor al de FPS')
+        salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", width=96.6, command=quit_1)
+        salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
+        
 
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Área [clic y arrastre]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-conft = Label(pestania1, text="Confianza: ").grid(row=5, column=0, sticky=W)
-conf = Entry(pestania1, textvariable = confstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=5, column=1, sticky=W)
-confq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-confq.grid(row=5, column=2, sticky=W, padx=5)
-crear_toolTip(confq, 'Valor de umbral de confianza del modelo, entre 0 y 1, cuanto mayor sea el valor habrá menos falso positivos, pero se perderán detecciones')
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. E/S [dos clics]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-cantapat = Label(pestania1, text="Cantidad de apariciones:").grid(row=6, column=0, sticky=W)
-cantapa = Entry(pestania1, textvariable = cantstring, width=10, validate='key', validatecommand=(vcmd_int)).grid(row=6, column=1, sticky=W)
-cantapaq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-cantapaq.grid(row=6, column=2, sticky=W, padx=5)
-crear_toolTip(cantapaq, 'Cantidad de apariciones minimas necesarias para dar por positiva la completa detección')
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Conv [dos clics]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-tiemt = Label(pestania1, text="Tiempo de guardado:").grid(row=7, column=0, sticky=W)
-tiem = Entry(pestania1, textvariable = tiemstring, width=10, validate='key', validatecommand=(vcmd_float)).grid(row=7, column=1, sticky=W)
-tiemq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-tiemq.grid(row=7, column=2, sticky=W, padx=5)
-crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="Seleccione video para comenzar", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-select = Label(pestania1, text="Carpeta de guardado").grid(row=8, column=0, sticky=W)
-boton_seleccionar_carpeta = Button(pestania1, text="Seleccionar Carpeta", command=seleccionar_carpeta).grid(row=8, column=1, sticky=W)
-selecq = Button(pestania1, image= imagenQ, height="16", width="16", borderwidth=0)
-selecq.grid(row=8, column=2, sticky=W, padx=5)
-crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
-
-
-botonok = Button(pestania1, text="Confirmar", command=guardar)
-botonok.grid(row=9, column=0, sticky=W)
-botonok.config(state=DISABLED)
+        self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
+        self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
 
         
+        self.pack(expand=True)
+
+    def getlblVideo(self):
+        return self.lblVideo
+
+    def gettxt1(self):
+        return self.texto1
+
+    def gettxt2(self):
+        return self.texto2
+
+    def gettxt3(self):
+        return self.texto3
+
+    def gettxt4(self):
+        return self.texto4  
+    
+    def gettxt5(self):
+        return self.texto5
+
+    def cambiartexto(self, widget, texto):
+        widget.configure(text=texto)
+    
+    def getProgressBar(self):
+        return self.progress_bar   
+    
+    def getPausa(self):
+        return self.pausa  
+    
+    def getBaseBlanca(self):
+        return self.base_b
+    
+    def getBotonSeleccion(self):
+        return self.boton_seleccion
+
+    def getBotonConv(self):
+        return self.boton_conv
+        
+    def on_click(self, event):
+        global gv, click_count, seleccion_entrada_habilitada, seleccion_conversion
+        
+        # Capturar el punto actual
+        current_point = (event.x, event.y)
+        
+        # Modo de selección de área base (click y arrastre)
+        if gv.bb == True:
+            # Iniciar arrastre al hacer clic
+            gv.point1 = current_point
+            self.lblVideo.bind("<B1-Motion>", self.on_mouse_move)
+            # Procesar al soltar el botón
+            self.lblVideo.bind("<ButtonRelease-1>", self.on_release)
+                
+        # Modo de selección de entrada/salida (dos clicks)
+        elif seleccion_entrada_habilitada == True:
+            if click_count == 0:
+                gv.point1 = current_point
+                click_count += 1
+                self.cambiartexto(self.texto2, "2. E/S → Seleccione salida")
+            elif click_count == 1:
+                gv.point2 = current_point
+                click_count = 0
+                self.procesar_seleccion_entrada_salida()
+                
+        # Modo de selección de conversión (dos clicks) 
+        elif seleccion_conversion == True:
+            if click_count == 0:
+                gv.point1 = current_point
+                click_count += 1
+                self.cambiartexto(self.texto3, "3. Conv → Seleccione segundo punto")
+            elif click_count == 1:
+                gv.point2 = current_point
+                click_count = 0
+                self.procesar_seleccion_conversion()
+
+    def on_mouse_move(self, event):
+        global gv
+        
+        # Actualiza la posicion del segundo punto (esquina opuesta)
+        gv.point2 = (event.x, event.y)
+        
+        # Crea una copia del frame pausado
+        frame_copy = gv.img.copy()
+        
+        # Dibujar el rectangulo en la copia del frame
+        cv2.rectangle(frame_copy, gv.point1, gv.point2, (0, 255, 0), 2)
+
+        frame_copy=ImgPIL.fromarray(frame_copy)
+        # Actualizar la imagen en la interfaz grafica
+        frame_tk = ctk.CTkImage(light_image=frame_copy, dark_image=frame_copy, size=(640,480))
+        self.lblVideo.configure(image=frame_tk)
+        self.lblVideo.image = frame_tk  
+
+    def on_release(self, event):
+        global gv
+        
+        if gv.bb:
+            # Capturar el punto final
+            gv.point2 = (event.x, event.y)
+            # Limpiar los bindings
+            self.lblVideo.unbind("<B1-Motion>")
+            self.lblVideo.unbind("<ButtonRelease-1>")
+            # Procesar la selección del área
+            self.procesar_seleccion_area()
+            
+    def procesar_seleccion_area(self):
+        # Procesar la selección del área base
+        global gv, seleccion_entrada_habilitada
+        
+        base_blanca_aux(gv.point1, gv.point2)
+        self.base_b.configure(fg_color="#4E8F69")
+        
+        self.cambiartexto(self.texto1, "1. Área ✓")
+        
+        # Desactivar el modo de selección de área
+        gv.bb = False
+        
+        # Verificar si todas las configuraciones están completas
+        self.verificar_configuracion_completa()
+
+    def procesar_seleccion_entrada_salida(self):
+        # Procesar la selección de entrada/salida
+        global gv, seleccion_entrada_habilitada
+        
+        gv.entrada_coord = gv.point1
+        gv.salida_coord = gv.point2
+        gv.direccion = detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
+        gv.entrada_salida_seleccionada = True
+        
+        self.boton_seleccion.configure(fg_color="#4E8F69")
+        self.cambiartexto(self.texto2, "2. E/S ✓")
+        
+        # Desactivar el modo de selección de entrada/salida
+        seleccion_entrada_habilitada = False
+        
+        # Verificar si todas las configuraciones están completas
+        self.verificar_configuracion_completa()
+    
+    def procesar_seleccion_conversion(self):
+        # Procesar la selección de conversión
+        global gv, seleccion_conversion
+        
+        # Calcular la distancia entre los dos puntos seleccionados
+        distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
+        
+        # Establecer la constante de conversión
+        gv.cte = (10**2)/(distance**2)
+        texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
+        
+        self.cambiartexto(self.texto3, texto)
+        self.boton_conv.configure(fg_color="#4E8F69")
+        
+        # Indicar que la conversión ha sido seleccionada
+        gv.conversion_seleccionada = True
+        
+        # Desactivar el modo de selección de conversión
+        seleccion_conversion = False
+        
+        # Verificar si todas las configuraciones están completas
+        self.verificar_configuracion_completa()
+        
+    def verificar_configuracion_completa(self):
+        # Verificar si todas las configuraciones están completas
+        if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
+            self.cambiartexto(self.texto4, "Configuración completa. Pulse Play")
+            # Habilitar y cambiar el color del botón de pausa a verde
+            self.pausa.configure(state="normal", fg_color="#4E8F69")
+        else:
+            # Si no están todas las configuraciones completas, mantener deshabilitado el botón de pausa
+            self.pausa.configure(state="disabled", fg_color="#2B2B2B")
+            self.cambiartexto(self.texto4, "Configure los 3 parámetros")
+
+class Tab3(ctk.CTkFrame):
+    def __init__(self, master):
+        super().__init__(master)
+        
+        self.figure1 = None
+        self.figure2 = None
+        self.canvas1 = None
+        self.canvas2 = None
+        self.cumulative_hojas = 0  # Variable para acumular total de hojas
+        
+        # Configuración del frame
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        # Frame para controles
+        self.control_frame = ctk.CTkFrame(self)
+        self.control_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        
+        # Frame para el primer gráfico (boxplot)
+        self.plot_frame1 = ctk.CTkFrame(self)
+        self.plot_frame1.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        
+        # Frame para el segundo gráfico (barras)
+        self.plot_frame2 = ctk.CTkFrame(self)
+        self.plot_frame2.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Botón para seleccionar archivo
+        self.select_button = ctk.CTkButton(
+            self.control_frame,
+            text="Seleccionar Archivo",
+            command=self.select_file
+        )
+        self.select_button.grid(row=0, column=0, padx=10, pady=10)
+
+        # Label para mostrar el archivo seleccionado
+        self.file_label = ctk.CTkLabel(
+            self.control_frame,
+            text="Ningún archivo seleccionado",
+            text_color="gray"
+        )
+        self.file_label.grid(row=0, column=1, padx=10, pady=10)
+
+        # Botón para crear gráfico
+        self.plot_button = ctk.CTkButton(
+            self.control_frame,
+            text="Crear Gráficos",
+            command=self.create_plots,
+            state="disabled"
+        )
+        self.plot_button.grid(row=0, column=2, padx=10, pady=10)
+        
+        # Botón para guardar gráficos
+        self.save_button1 = ctk.CTkButton(
+            self.control_frame,
+            text="Guardar Gráfico 1",
+            command=lambda: self.save_plot(1),
+            state="disabled"
+        )
+        self.save_button1.grid(row=0, column=3, padx=10, pady=10)
+        
+        self.save_button2 = ctk.CTkButton(
+            self.control_frame,
+            text="Guardar Gráfico 2",
+            command=lambda: self.save_plot(2),
+            state="disabled"
+        )
+        self.save_button2.grid(row=0, column=4, padx=10, pady=10)
+
+        self.pack(expand=True, fill='both')
+
+    def select_file(self):
+        filename = fd.askopenfilename(
+            title='Seleccionar archivo de datos',
+            filetypes=[('Archivos de texto', '*.txt')]
+        )
+        if filename:
+            self.current_file = filename
+            self.file_label.configure(
+                text=os.path.basename(filename),
+                text_color="white"
+            )
+            self.plot_button.configure(state="normal")
+
+    def create_plots(self):
+        try:
+            # Limpiar los gráficos anteriores si existen
+            self.cleanup()
+            
+            # Leer el archivo CSV
+            df = pd.read_csv(self.current_file)
+            
+            # Eliminar la primera fila si es un duplicado del encabezado
+            if (df.iloc[0] == df.columns).all():
+                df = df.iloc[1:]
+            
+            # Combinar fecha y hora para hacer una columna de tiempo
+            df['Tiempo_Inicio'] = pd.to_datetime(df['Fecha'] + ' ' + df['HoraInicio'], format='%d-%m-%Y %H:%M')
+            df['Tiempo_Fin'] = pd.to_datetime(df['Fecha'] + ' ' + df['HoraFin'], format='%d-%m-%Y %H:%M')
+            
+            # Ordenar por tiempo de inicio
+            df = df.sort_values('Tiempo_Inicio')
+            
+            # Crear etiquetas para el eje X en formato "HH:MM-HH:MM"
+            labels = [f"{inicio.strftime('%H:%M')}-{fin.strftime('%H:%M')}" for inicio, fin in zip(df['Tiempo_Inicio'], df['Tiempo_Fin'])]
+            
+            # GRÁFICO 1: Boxplot (Gráfico de velas)
+            self.create_boxplot(df, labels)
+            
+            # GRÁFICO 2: Cantidad de hojas y área total acumulada
+            self.create_hojas_plot(df, labels)
+            
+            # Habilitar botones de guardado
+            self.save_button1.configure(state="normal")
+            self.save_button2.configure(state="normal")
+            
+        except Exception as e:
+            msg.showerror('Error', f'Error al crear los gráficos: {str(e)}')
+            print(f"Error detallado: {str(e)}")
+    
+    def create_boxplot(self, df, labels):
+        # Crear figura para el boxplot
+        self.figure1 = plt.figure(figsize=(12, 5))
+        ax = self.figure1.add_subplot(111)
+        
+        # Datos para el boxplot
+        data = []
+        for _, row in df.iterrows():
+            stats = {
+                'whislo': row['Minimo'],      # Mínimo
+                'q1': row['Percentil25'],     # Q1 (Percentil 25)
+                'med': row['Mediana'],        # Mediana
+                'q3': row['Percentil75'],     # Q3 (Percentil 75)
+                'whishi': row['Maximo'],      # Máximo
+                'fliers': []                  # Sin outliers
+            }
+            data.append(stats)
+        
+        # Crear el boxplot
+        bplot = ax.bxp(data, patch_artist=True)
+        
+        # Personalizar el boxplot
+        for patch in bplot['boxes']:
+            patch.set_facecolor('lightblue')
+            patch.set_alpha(0.7)
+        
+        for median in bplot['medians']:
+            median.set_color('darkblue')
+            median.set_linewidth(1.5)
+        
+        # Configurar el gráfico
+        ax.set_title('Distribución del área de hojas por intervalo', fontsize=14)
+        ax.set_xlabel('Intervalos de tiempo', fontsize=12)
+        ax.set_ylabel('Área (mm²)', fontsize=12)
+        
+        # Mostrar todos los intervalos en el eje X
+        ax.set_xticks(range(1, len(labels) + 1))
+        ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+        
+        # Asegurar que se vean todos los ticks del eje X
+        plt.subplots_adjust(bottom=0.2)
+        
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        # Ajustar la figura
+        plt.tight_layout()
+        
+        # Crear el canvas para mostrar el gráfico
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        self.canvas1 = FigureCanvasTkAgg(self.figure1, master=self.plot_frame1)
+        self.canvas1.draw()
+        self.canvas1.get_tk_widget().pack(fill='both', expand=True)
+    
+    def create_hojas_plot(self, df, labels):
+        # Crear figura para el gráfico de hojas
+        self.figure2 = plt.figure(figsize=(12, 5))
+        ax1 = self.figure2.add_subplot(111)
+        
+        # Crear el gráfico de barras para cantidad de hojas
+        x = range(1, len(df) + 1)
+        bars = ax1.bar(x, df['CantHojas'], color='lightgreen', alpha=0.7, label='Cantidad de Hojas')
+        
+        # Asegurarse de que el eje Y tenga el rango adecuado para los valores de CantHojas
+        max_hojas = df['CantHojas'].max()
+        ax1.set_ylim(0, max_hojas * 1.1)  # Dar un 10% extra de espacio
+        
+        # Configurar el primer eje Y
+        ax1.set_xlabel('Intervalos de tiempo', fontsize=12)
+        ax1.set_ylabel('Cantidad de Hojas', fontsize=12, color='green')
+        ax1.tick_params(axis='y', labelcolor='green')
+        
+        # Crear un segundo eje Y para el área total por intervalo
+        ax2 = ax1.twinx()
+        
+        # Usar directamente los valores de AreaTotal (sin acumular)
+        ax2.plot(x, df['AreaTotal'], 'r-', marker='o', linewidth=2, label='Área Total')
+        
+        # Asegurarse de que el eje Y2 tenga el rango adecuado para los valores de área
+        max_area = df['AreaTotal'].max()
+        ax2.set_ylim(0, max_area * 1.1)  # Dar un 10% extra de espacio
+        
+        ax2.set_ylabel('Área Total (mm²)', fontsize=12, color='red')
+        ax2.tick_params(axis='y', labelcolor='red')
+        
+        # Asegurar que se muestren todos los valores en el eje X
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+        
+        # Asegurar que se vean todos los ticks del eje X
+        plt.subplots_adjust(bottom=0.2)
+        
+        # Añadir título y leyenda
+        ax1.set_title('Cantidad de hojas y área total por intervalo', fontsize=14)
+        
+        # Crear leyenda combinada
+        lines, labels_leg = ax1.get_legend_handles_labels()
+        lines2, labels_leg2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines + lines2, labels_leg + labels_leg2, loc='upper left')
+        
+        # Ajustar la figura
+        plt.tight_layout()
+        
+        # Crear el canvas para mostrar el gráfico
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        self.canvas2 = FigureCanvasTkAgg(self.figure2, master=self.plot_frame2)
+        self.canvas2.draw()
+        self.canvas2.get_tk_widget().pack(fill='both', expand=True)
+    
+    def save_plot(self, plot_num):
+        try:
+            # Definir opciones para guardar
+            file_types = [('PNG', '*.png'), ('JPEG', '*.jpg'), ('PDF', '*.pdf')]
+            default_name = f"grafico_{plot_num}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Solicitar ubicación de guardado
+            filename = fd.asksaveasfilename(
+                title=f'Guardar Gráfico {plot_num}',
+                defaultextension=".png",
+                filetypes=file_types,
+                initialfile=default_name
+            )
+            
+            if filename:
+                if plot_num == 1 and self.figure1:
+                    self.figure1.savefig(filename, dpi=300, bbox_inches='tight')
+                    msg.showinfo('Éxito', f'Gráfico 1 guardado como {os.path.basename(filename)}')
+                elif plot_num == 2 and self.figure2:
+                    self.figure2.savefig(filename, dpi=300, bbox_inches='tight')
+                    msg.showinfo('Éxito', f'Gráfico 2 guardado como {os.path.basename(filename)}')
+        
+        except Exception as e:
+            msg.showerror('Error', f'Error al guardar el gráfico: {str(e)}')
+    
+    def cleanup(self):
+        """Limpia los recursos de los gráficos"""
+        if self.canvas1:
+            self.canvas1.get_tk_widget().destroy()
+        if self.figure1:
+            plt.close(self.figure1)
+            
+        if self.canvas2:
+            self.canvas2.get_tk_widget().destroy()
+        if self.figure2:
+            plt.close(self.figure2)
+            
+        # Limpiar los frames de gráficos
+        for widget in self.plot_frame1.winfo_children():
+            widget.destroy()
+        for widget in self.plot_frame2.winfo_children():
+            widget.destroy()
+
 def quit_1():   #Funcion que cierra la ventana principal
-    #finalizar()
-    pantalla.destroy()
-    pantalla.quit()
-    #exit()
+#     #finalizar()
+     
+     app.destroy()
+     app.quit()
+     #exit()
     
 
-imagenS = PhotoImage(file="assets/salida.png")
-salir = Button(pantalla, text="Salir", command=quit_1)
-salir.place(x = 980, y = 600)
-
-#Evento de click
-lblVideo.bind("<Button-1>", on_click)
 
 # Bucle de ejecucion de la ventana.
-pantalla.mainloop()
-
+app = App()
+app.mainloop()
 
 # Release the video capture object and close the display window
 gv.cap.release()
