@@ -41,6 +41,9 @@ class VGlobals:
         self.entrada_salida_seleccionada = False
         self.conversion_seleccionada = False
         
+        # Ruta del modelo
+        self.model_path = "src/models_data/10-3.pt"
+        
 gv=VGlobals()
 
 
@@ -123,7 +126,7 @@ def iniciar(UI2):
     
     gv.ID=-1
     # Elegimos el modelo de detección
-    gv.model = YOLO("src/models_data/10-3.pt")
+    gv.model = YOLO(gv.model_path)
     gv.model.to(device)
 
     gv.cap = cv2.VideoCapture(gv.filename)
@@ -809,20 +812,19 @@ class MyTabView(ctk.CTkTabview):
         super().__init__(master, anchor="w", **kwargs)
 
         #Creamos las pestañas
-        #self.configure(state="disabled")
         self.add("Init")
         self.add("Pantalla Video")
         self.add("Análisis")
 
         # add widgets on tabs
-        self.tab("Init").configure(border_width=0)  # Opcional, para estandarizar el estilo
+        self.tab("Init").configure(border_width=0)  
         Tab1(self.tab("Init"), parent=self)
 
-        self.tab("Pantalla Video").configure(border_width=0)  # Opcional
+        self.tab("Pantalla Video").configure(border_width=0)  
         Tab2(self.tab("Pantalla Video"))
 
         self.tab("Análisis").configure(border_width=0)
-        Tab3(self.tab("Análisis"))  # Nueva clase Tab3
+        Tab3(self.tab("Análisis"))  
         
 
     def habilitar_tabs(self):
@@ -938,8 +940,20 @@ class Tab1(ctk.CTkFrame):
         selecq.grid(row=9, column=2, sticky="w", padx=5)
         self.crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
 
+        # Botón para seleccionar modelo
+        modelo = ctk.CTkLabel(self, text="Modelo YOLO").grid(row=10, column=0, sticky="w")
+        boton_seleccionar_modelo = ctk.CTkButton(self, text="Seleccionar Modelo", command=self.seleccionar_modelo)
+        boton_seleccionar_modelo.grid(row=10, column=1, sticky="w")
+        modeloq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        modeloq.grid(row=10, column=2, sticky="w", padx=5)
+        self.crear_toolTip(modeloq, 'Seleccionar modelo YOLO para la detección de hojas')
+        
+        # Etiqueta para mostrar el modelo seleccionado
+        self.modelo_label = ctk.CTkLabel(self, text="")
+        self.modelo_label.grid(row=10, column=3, columnspan=2, sticky="w", padx=5)
+
         self.botonok = ctk.CTkButton(self, text="Confirmar", command=self.guardar)
-        self.botonok.grid(row=10, column=0, sticky=W)
+        self.botonok.grid(row=11, column=0, sticky=W)
         self.botonok.configure(state="disabled")
 
         self.pack(expand=True, fill='both')
@@ -988,6 +1002,18 @@ class Tab1(ctk.CTkFrame):
     def callback(self, tipo, P):
         return self.validar_input(tipo, P)
     
+    def seleccionar_modelo(self):
+        global gv
+        modelo_path = fd.askopenfilename(
+            title='Seleccionar modelo YOLO',
+            filetypes=[('Modelo PyTorch', '*.pt')],
+            initialdir='src/models_data'
+        )
+        if modelo_path:
+            gv.model_path = modelo_path
+            # Mostrar tilde y nombre del modelo en la etiqueta
+            nombre_modelo = os.path.basename(modelo_path)
+            self.modelo_label.configure(text=f"✓ {nombre_modelo}", text_color="#4E8F69")
 
 # Clase para la segunda pestaña
 class Tab2(ctk.CTkFrame):
