@@ -22,10 +22,12 @@ from ultralytics import YOLO
 from PIL import Image as ImgPIL
 from PIL import ImageTk
 from CTkToolTip import *
+import pickle
 
 from src.modules.hoja import Hoja, posicion, comparar, Aparicion, xycentro, xypredic
 from src.modules.ToolTip import *
 from src.modules.KalmanFilter import KalmanFilter
+from src.modules.state_manager import StateManager
 
 #Defino la variable global
 class VGlobals:
@@ -40,6 +42,9 @@ class VGlobals:
         self.area_seleccionada = False
         self.entrada_salida_seleccionada = False
         self.conversion_seleccionada = False
+        
+        # Ruta del modelo
+        self.model_path = "src/models_data/10-3.pt"
         
 gv=VGlobals()
 
@@ -123,7 +128,7 @@ def iniciar(UI2):
     
     gv.ID=-1
     # Elegimos el modelo de detección
-    gv.model = YOLO("src/models_data/10-3.pt")
+    gv.model = YOLO(gv.model_path)
     gv.model.to(device)
 
     gv.cap = cv2.VideoCapture(gv.filename)
@@ -375,13 +380,7 @@ def eliminar_hojas(hojas, frame_actual):
             # Eliminar la hoja del array hojas
             del hojas[i]
     return hojas
-    
-def finalizar():
-    global gv
-    gv.cap.release()
-    cv2.destroyAllWindows()
-    print("FIN")
-  
+      
 def detectar_direccion_entrada_salida(punto_entrada, punto_salida):
     dx = punto_salida[0] - punto_entrada[0]
     dy = punto_salida[1] - punto_entrada[1]
@@ -524,100 +523,122 @@ def filtrar_duplicados(hojas):
     return hojas_filtradas
 
 def escribirarchivo(hojas_final, hojas_final_sale, bandera):
+    """
+    Escribe datos en los archivos de salida.
+    
+    Args:
+        hojas_final: Lista de hojas procesadas
+        hojas_final_sale: Lista de hojas salientes
+        bandera: 0 para escribir detalles, 1 para escribir resumen de intervalo
+    """
     global gv
-    gv.estadisticas = []
     
-    if bandera == 0:
-        for item in hojas_final:
-            for aparicion in item.apariciones:
-                gv.archi1.write(str(item.valid_id)+"|"+str(aparicion.getx()) +"|"+ 
-                               str(aparicion.gety()) +"|"+ str(aparicion.getxp()) +"|"+ 
-                               str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ 
-                               str(aparicion.getframe())+"\n")
-    
-    if bandera == 1:
-        gv.archi2.seek(0, 2)
-        
-        # Obtener estadísticas de las hojas en el intervalo de tiempo
-        gv.estadisticas = [item.getarea() for item in hojas_final 
-                          if (gv.garch - gv.configuracion.gettiempo()) < 
-                          (item.apariciones[0].getframe() / (30 * 60)) < gv.garch] 
-
-        # Calcular métricas de seguimiento incluso si no hay hojas
-        metricas = evaluar_seguimiento(hojas_final)
-        tse = metricas["Tasa_Seguimiento_Exitoso"]
-        tct = metricas["Tasa_de_Trayectorias"]
-
-        minutos_transcurridos = int(gv.garch)
-        hora_inicial = gv.configuracion.gethora()
-        hora_fin = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
-        hora_inicio = hora_fin - datetime.timedelta(minutes=gv.configuracion.gettiempo())
-
-        fecha_inicial_str = gv.configuracion.getfecha()
-
-        # Convertir la fecha de string a objeto datetime
-        try:
-            # Asumiendo formato DD-MM-YYYY
-            dia, mes, anio = map(int, fecha_inicial_str.split('-'))
-            fecha_inicial = datetime.datetime(anio, mes, dia)
+    try:
+        # Verificar que los archivos estén abiertos
+        if (bandera == 0 and not hasattr(gv, 'archi1')) or (bandera == 1 and not hasattr(gv, 'archi2')):
+            print(f"Error: Archivo {'archi1' if bandera == 0 else 'archi2'} no disponible")
+            return
             
-            # Crear datetime completos para inicio y fin (fecha + hora)
-            dt_inicio = fecha_inicial + hora_inicio
-            dt_fin = fecha_inicial + hora_fin
-            
-            # Formatear las fechas y horas
-            fecha_str = dt_fin.strftime("%d-%m-%Y")
-            hora_inicio_str = dt_inicio.strftime("%H:%M")
-            hora_fin_str = dt_fin.strftime("%H:%M")
-            
-        except ValueError:
-            # En caso de error en el formato de fecha, usar valores por defecto
-            fecha_str = fecha_inicial_str
-            hora_inicio_str = f"{hora_inicio.days * 24 + hora_inicio.seconds // 3600:02d}:{(hora_inicio.seconds // 60) % 60:02d}"
-            hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
-
-        # Si hay estadísticas, usar valores calculados, si no hay, usar 0
-        if len(gv.estadisticas) > 0:
-            area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte
-            area_percentil25 = np.mean([item['percentil25'] for item in gv.estadisticas])*gv.cte
-            area_percentil75 = np.mean([item['percentil75'] for item in gv.estadisticas])*gv.cte
-            area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
-            area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
-            area_media = np.mean([item['media'] for item in gv.estadisticas])*gv.cte
-            area_total = sum([item['media'] for item in gv.estadisticas])*gv.cte  # Suma de todas las áreas medias
-            cant_hojas = len(gv.estadisticas)
-        else:
-            # Si no hay hojas en este intervalo, todos los valores son 0
-            area_mediana = 0.0
-            area_percentil25 = 0.0
-            area_percentil75 = 0.0
-            area_maxima = 0.0
-            area_minima = 0.0
-            area_media = 0.0
-            area_total = 0.0
-            cant_hojas = 0
-
-        # Escribir en el archivo siempre, independientemente de si hay datos o no
-        gv.archi2.write(f"{cant_hojas},{area_mediana:.2f},{area_percentil25:.2f},"
-           f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
-           f"{area_media:.2f},{area_total:.2f},"
-           f"{tse:.2f},{tct:.2f}," 
-           f"{fecha_str},{hora_inicio_str},{hora_fin_str}\n")
+        # Escribir datos en archivos según la bandera
+        if bandera == 0:
+            for item in hojas_final:
+                for aparicion in item.apariciones:
+                    gv.archi1.write(str(item.valid_id)+"|"+str(aparicion.getx()) +"|"+ 
+                                  str(aparicion.gety()) +"|"+ str(aparicion.getxp()) +"|"+ 
+                                  str(aparicion.getyp()) +"|"+str(aparicion.getarea())+ "|"+ 
+                                  str(aparicion.getframe())+"\n")
         
-        if not hasattr(gv, 'total_hojas'):
-            gv.total_hojas = 0
-        gv.total_hojas += len(hojas_final)
-        
-        # Limpiar la lista de hojas
-        gv.hojas_final.clear()
+        elif bandera == 1:
+            # Inicializar estadísticas
+            gv.estadisticas = []
+            
+            # Usar copia local de garch para evitar problemas con actualizaciones concurrentes
+            garch_actual = gv.garch
+            tiempo_guardado = gv.configuracion.gettiempo()
+            
+            # Obtener estadísticas de las hojas en el intervalo de tiempo
+            gv.estadisticas = [item.getarea() for item in hojas_final 
+                              if (garch_actual - tiempo_guardado) < 
+                              (item.apariciones[0].getframe() / (30 * 60)) < garch_actual]
+            
+            # Ir al final del archivo
+            gv.archi2.seek(0, 2)
+            
+            # Calcular métricas de seguimiento incluso si no hay hojas
+            metricas = evaluar_seguimiento(hojas_final)
+            tse = metricas["Tasa_Seguimiento_Exitoso"]
+            tct = metricas["Tasa_de_Trayectorias"]
 
+            minutos_transcurridos = int(garch_actual)
+            hora_inicial = gv.configuracion.gethora()
+            hora_fin = hora_inicial + datetime.timedelta(minutes=minutos_transcurridos)
+            hora_inicio = hora_fin - datetime.timedelta(minutes=tiempo_guardado)
 
-    # archi1.write("Saliente: \n")
-    # for item in hojas_final_sale:
-    #     for aparicion in item.apariciones:
-    #         archi1.write(str(item.id)+ "|"+str(aparicion.getx()) +"|"+ str(aparicion.gety()) +"|"+ str(aparicion.getarea())+"|"+str(aparicion.getframe())+"\n")
+            fecha_inicial_str = gv.configuracion.getfecha()
 
-    
+            # Convertir la fecha de string a objeto datetime
+            try:
+                # Asumiendo formato DD-MM-YYYY
+                dia, mes, anio = map(int, fecha_inicial_str.split('-'))
+                fecha_inicial = datetime.datetime(anio, mes, dia)
+                
+                # Crear datetime completos para inicio y fin (fecha + hora)
+                dt_inicio = fecha_inicial + hora_inicio
+                dt_fin = fecha_inicial + hora_fin
+                
+                # Formatear las fechas y horas
+                fecha_str = dt_fin.strftime("%d-%m-%Y")
+                hora_inicio_str = dt_inicio.strftime("%H:%M")
+                hora_fin_str = dt_fin.strftime("%H:%M")
+                
+            except ValueError:
+                # En caso de error en el formato de fecha, usar valores por defecto
+                fecha_str = fecha_inicial_str
+                hora_inicio_str = f"{hora_inicio.days * 24 + hora_inicio.seconds // 3600:02d}:{(hora_inicio.seconds // 60) % 60:02d}"
+                hora_fin_str = f"{hora_fin.days * 24 + hora_fin.seconds // 3600:02d}:{(hora_fin.seconds // 60) % 60:02d}"
+
+            # Si hay estadísticas, usar valores calculados, si no hay, usar 0
+            if len(gv.estadisticas) > 0:
+                area_mediana = np.mean([item['mediana'] for item in gv.estadisticas])*gv.cte
+                area_percentil25 = np.mean([item['percentil25'] for item in gv.estadisticas])*gv.cte
+                area_percentil75 = np.mean([item['percentil75'] for item in gv.estadisticas])*gv.cte
+                area_maxima = np.max([item['maximo'] for item in gv.estadisticas])*gv.cte
+                area_minima = np.min([item['minimo'] for item in gv.estadisticas])*gv.cte
+                area_media = np.mean([item['media'] for item in gv.estadisticas])*gv.cte
+                area_total = sum([item['media'] for item in gv.estadisticas])*gv.cte  # Suma de todas las áreas medias
+                cant_hojas = len(gv.estadisticas)
+            else:
+                # Si no hay hojas en este intervalo, todos los valores son 0
+                area_mediana = 0.0
+                area_percentil25 = 0.0
+                area_percentil75 = 0.0
+                area_maxima = 0.0
+                area_minima = 0.0
+                area_media = 0.0
+                area_total = 0.0
+                cant_hojas = 0
+
+            # Escribir en el archivo siempre, independientemente de si hay datos o no
+            gv.archi2.write(f"{cant_hojas},{area_mediana:.2f},{area_percentil25:.2f},"
+               f"{area_percentil75:.2f},{area_minima:.2f},{area_maxima:.2f},"
+               f"{area_media:.2f},{area_total:.2f},"
+               f"{tse:.2f},{tct:.2f}," 
+               f"{fecha_str},{hora_inicio_str},{hora_fin_str}\n")
+            
+            # Asegurar que se escriba inmediatamente en el archivo
+            gv.archi2.flush()
+            
+            if not hasattr(gv, 'total_hojas'):
+                gv.total_hojas = 0
+            gv.total_hojas += len(hojas_final)
+            
+            # Limpiar la lista de hojas
+            gv.hojas_final.clear()
+            
+    except Exception as e:
+        print(f"Error en escribirarchivo (bandera {bandera}): {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 def visualizar(UI2):
     """
@@ -645,11 +666,27 @@ def visualizar(UI2):
 
             # Procesar detecciones YOLO solo cuando sea necesario
             if gv.frameactual - gv.frameaux >= gv.configuracion.getfpsdist():
-                # Usar la confianza de configuración para reducir falsos positivos
-                results = gv.model.predict(frame, conf=gv.configuracion.getconf(), verbose=False)
-                gv.annotated_frame = results[0].plot()
-                detector(results, gv.frameactual)
-                gv.frameaux = gv.frameactual
+                try:
+                    # Verificar que el frame no esté vacío
+                    if frame is None or frame.size == 0:
+                        print("Warning: Frame vacío o nulo en YOLO")
+                        return
+                        
+                    # Usar la confianza de configuración para reducir falsos positivos
+                    results = gv.model.predict(frame, conf=gv.configuracion.getconf(), verbose=False)
+                    
+                    # Verificar que results contenga datos válidos
+                    if results and len(results) > 0:
+                        gv.annotated_frame = results[0].plot()
+                        detector(results, gv.frameactual)
+                    else:
+                        print("Warning: Resultados de YOLO vacíos")
+                        
+                    gv.frameaux = gv.frameactual
+                except Exception as e:
+                    print(f"Error en procesamiento YOLO: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Cálculos de tiempo
             sec = gv.frameactual / gv.configuracion.getfps()
@@ -663,9 +700,24 @@ def visualizar(UI2):
             # Manejo de guardado automático
             gv.garch = sec / 60
             tiempo_guardado = float(gv.configuracion.gettiempo())
-            if tiempo_guardado > 0 and abs(gv.garch % tiempo_guardado) < 0.01:  # Tolerancia para evitar problemas de punto flotante
-                escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
-                escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
+            
+            # Calcular si toca guardar datos en archivos, con una pequeña tolerancia para redondeo
+            guardar_archivos = tiempo_guardado > 0 and abs(gv.garch % tiempo_guardado) == 0
+            
+            # Calcular si toca guardar estado (una vez cada 500 frames)
+            guardar_estado_periodico = gv.frameactual % 500 == 0
+            
+            # Guardar archivos de datos si corresponde
+            if guardar_archivos:
+                try:
+                    # Escribir en los archivos de datos
+                    escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 0)
+                    escribirarchivo(gv.hojas_final, gv.hojas_final_sale, 1)
+                    filepath = "antnalyzer_state.pkl"  # Siempre en la carpeta base
+                    UI2.getlblVideo().after_idle(lambda: StateManager.save_application_state(gv, filepath))
+                except Exception as e:
+                    print(f"Error al escribir en archivos: {str(e)}")
+            
 
             # Procesar hojas
             gv.hojas = eliminar_hojas(gv.hojas, gv.frameactual)
@@ -706,12 +758,22 @@ def visualizar(UI2):
                 total_frames = gv.cap.get(cv2.CAP_PROP_FRAME_COUNT)
                 progress = current_frame / total_frames
                 UI2.getProgressBar().set(progress)
+                
+                
 
             # Programar siguiente frame con un intervalo adecuado para mantener fluidez
             lblVideo.after(1, lambda: visualizar(UI2))
 
         except Exception as e:
             print(f"Error en visualizar: {e}")
+            
+            # Intentar guardar el estado antes de cerrar en caso de error
+            try:
+                filepath = "antnalyzer_state.pkl"  # Siempre en la carpeta base
+                StateManager.save_application_state(gv, filepath)
+            except:
+                pass
+                
             if gv.cap is not None:
                 gv.cap.release()
             cv2.destroyAllWindows()
@@ -720,15 +782,92 @@ def handle_end_of_video(UI2, gv):
     """
     Maneja el final del video actual
     """
-    gv.cap.release()
-    if gv.filenames.index(gv.filename) == len(gv.filenames)-1:
-        gv.archi1.close()
-        gv.archi2.close()
+    try:
+        # Liberar recursos actuales
+        if hasattr(gv, 'cap') and gv.cap is not None:
+            gv.cap.release()
+        
+        # Verificar si hay una lista de archivos y un archivo actual válidos
+        if not hasattr(gv, 'filenames') or not gv.filenames or not hasattr(gv, 'filename') or not gv.filename:
+            print("No hay archivos de video para procesar o ya se terminaron todos.")
+            finalizar_procesamiento(UI2)
+            return
+        
+        # Determinar si estamos en el último video de manera segura
+        try:
+            current_index = gv.filenames.index(gv.filename)
+            is_last_video = current_index >= len(gv.filenames) - 1
+        except ValueError:
+            # Si no se encuentra el archivo en la lista, asumimos que es el último
+            print("Advertencia: No se pudo determinar la posición del archivo actual en la lista.")
+            is_last_video = True
+        
+        if is_last_video:
+            # Es el último video, finalizamos todo
+            finalizar_procesamiento(UI2)
+        else:
+            # Pasar al siguiente video
+            next_index = current_index + 1
+            gv.filename = gv.filenames[next_index]
+            
+            try:
+                gv.cap = cv2.VideoCapture(gv.filename)
+                if not gv.cap.isOpened():
+                    print(f"Error: No se pudo abrir el video siguiente: {gv.filename}")
+                    # Intentar con el siguiente si este falla
+                    handle_end_of_video(UI2, gv)
+                    return
+                # Continuar con la visualización
+                visualizar(UI2)
+            except Exception as e:
+                print(f"Error al abrir el siguiente video: {str(e)}")
+                finalizar_procesamiento(UI2)
+    except Exception as e:
+        print(f"Error al manejar el final del video: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        finalizar_procesamiento(UI2)
+
+def finalizar_procesamiento(UI2):
+    """
+    Finaliza el procesamiento de todos los videos, cerrando archivos y liberando recursos
+    """
+    try:
+        # Cerrar archivos de salida
+        if hasattr(gv, 'archi1') and gv.archi1:
+            try:
+                gv.archi1.close()
+            except:
+                pass
+                
+        if hasattr(gv, 'archi2') and gv.archi2:
+            try:
+                gv.archi2.close()
+            except:
+                pass
+        
+        # Cerrar todas las ventanas de OpenCV
         cv2.destroyAllWindows()
-    else:
-        gv.filename = gv.filenames[gv.filenames.index(gv.filename)+1]
-        gv.cap = cv2.VideoCapture(gv.filename)
-        visualizar(UI2)
+        
+        # Eliminar el archivo de estado al completar todo el procesamiento
+        try:
+            filepath = "antnalyzer_state.pkl"  # Siempre en la carpeta base
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                print(f"Archivo de estado eliminado: {filepath}")
+                
+                # Mostrar mensaje de finalización
+                msg.showinfo("Procesamiento Completado", "El procesamiento de todos los videos ha finalizado correctamente.")
+        except Exception as e:
+            print(f"Error al eliminar archivo de estado: {str(e)}")
+            
+        # Actualizar la interfaz para indicar que se ha completado
+        if UI2:
+            UI2.cambiartexto(UI2.gettxt4(), "Procesamiento completado")
+            UI2.getPausa().configure(state="disabled")
+            
+    except Exception as e:
+        print(f"Error al finalizar el procesamiento: {str(e)}")
 
 
 # Variables
@@ -783,12 +922,248 @@ class App(ctk.CTk):
         self.pestanias = MyTabView(master=self)
         self.pestanias.pack(expand=True, fill='both')
 
+        # Cargar estado si existe
+        self.state_loaded = self.load_state()
+        
+
         # Agregar protocolo de cierre
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+    def load_state(self):
+        """Intenta cargar el estado guardado de la aplicación"""
+        global gv
+        filepath = "antnalyzer_state.pkl"  # Buscar siempre en la carpeta base
+        
+        # Verificar si existe un archivo de estado
+        if os.path.exists(filepath):
+            try:
+                # Obtener información básica del archivo de estado para mostrarla
+                with open(filepath, 'rb') as f:
+                    state_dict = pickle.load(f)
+                
+                # Obtener datos relevantes para mostrar
+                timestamp = state_dict.get('timestamp', 'desconocido')
+                filename = state_dict.get('filename', 'ninguno') if state_dict.get('filename') else 'ninguno'
+                filename = os.path.basename(filename) if filename != 'ninguno' else 'ninguno'
+
+                
+                # Construir mensaje informativo
+                mensaje = (f"Se encontró una sesión guardada:\n\n"
+                          f"• Fecha: {timestamp}\n"
+                          f"• Video: {filename}\n\n"
+                          "¿Desea cargar esta sesión y continuar desde donde se quedó?")
+                
+                # Mostrar cuadro de diálogo para confirmar
+                respuesta = msg.askyesno("Sesión Anterior Encontrada", mensaje)
+                
+                if respuesta:
+                    # El usuario quiere cargar el estado
+                    loaded = StateManager.load_application_state(gv, filepath)
+                    
+                    if loaded:
+                        # Si se cargó el estado correctamente, configurar la interfaz
+                        self.after(500, self.restore_ui_state)
+                        return True
+                else:
+                    # El usuario no quiere cargar el estado, eliminar el archivo
+                    try:
+                        os.remove(filepath)
+                        print(f"Archivo de estado eliminado: {filepath}")
+                    except Exception as e:
+                        print(f"Error al eliminar archivo de estado: {str(e)}")
+            except Exception as e:
+                print(f"Error al obtener información del estado: {str(e)}")
+                
+                # Preguntar de todas formas si hay un error al leer
+                respuesta = msg.askyesno("Sesión Anterior Encontrada", 
+                                       "Se encontró una sesión guardada, pero no se pudo leer su información.\n"
+                                       "¿Desea intentar cargar esta sesión?")
+                
+                if respuesta:
+                    # El usuario quiere cargar el estado a pesar del error
+                    loaded = StateManager.load_application_state(gv, filepath)
+                    
+                    if loaded:
+                        # Si se cargó el estado correctamente, configurar la interfaz
+                        self.after(500, self.restore_ui_state)
+                        return True
+                else:
+                    # El usuario no quiere cargar el estado, eliminar el archivo
+                    try:
+                        os.remove(filepath)
+                        print(f"Archivo de estado eliminado: {filepath}")
+                    except Exception as e:
+                        print(f"Error al eliminar archivo de estado: {str(e)}")
+        
+        return False
+    
+    def restore_ui_state(self):
+        """Restaura el estado de la interfaz de usuario después de cargar un estado guardado"""
+        global gv, kf
+        
+        try:
+            # Si no hay configuración cargada, no podemos restaurar
+            if not hasattr(gv, 'configuracion') or gv.configuracion is None:
+                print("No hay configuración cargada para restaurar el estado")
+                return
+            
+            # Ir a la tab de Pantalla Video
+            self.pestanias.siguiente("Pantalla Video")
+            
+            # Obtener la instancia de Tab2
+            tab2_instance = None
+            for child in self.pestanias.tab("Pantalla Video").winfo_children():
+                if isinstance(child, Tab2):
+                    tab2_instance = child
+                    break
+            
+            if tab2_instance:
+                # Inicializar filtros Kalman
+                kf = [KalmanFilter()]  # Reiniciar lista de filtros Kalman
+                
+                # Asegurarse de que ID está sincronizado con el número de filtros Kalman
+                if hasattr(gv, 'ID') and gv.ID >= 0:
+                    # Para cada ID adicional, crear un nuevo filtro Kalman
+                    for i in range(gv.ID):
+                        kf.append(KalmanFilter())
+                
+                # Reabrir el video y posicionar en el frame guardado
+                if hasattr(gv, 'filename') and gv.filename:
+                    # Si no hay una captura abierta, abrirla
+                    if not hasattr(gv, 'cap') or gv.cap is None:
+                        # Reabrir archivos de salida en modo append
+                        try:
+                            fecha = gv.configuracion.getfecha()
+                            carpeta = gv.carpeta_seleccionada
+                            
+                            gv.archi1 = open(os.path.join(carpeta, f"datos-{fecha}.txt"), "a+")
+                            gv.archi2 = open(os.path.join(carpeta, f"intervalo-{fecha}.txt"), "a+")
+                            
+                            # Verificar si el archivo está vacío, agregar encabezado si es necesario
+                            gv.archi2.seek(0, 0)
+                            if not gv.archi2.read(1):
+                                gv.archi2.write("CantHojas,Mediana,Percentil25,Percentil75,Minimo,Maximo,Media,AreaTotal,TSE,TCT,Fecha,HoraInicio,HoraFin\n")
+                            
+                            # Volver al final del archivo
+                            gv.archi2.seek(0, 2)
+                            
+                        except Exception as e:
+                            print(f"Error al abrir archivos de salida: {str(e)}")
+                        
+                        # Inicializar variables críticas si no existen
+                        if not hasattr(gv, 'annotated_frame'):
+                            gv.annotated_frame = None
+                            
+                        if not hasattr(gv, 'hojas'):
+                            gv.hojas = []
+                            
+                        if not hasattr(gv, 'hojas_final'):
+                            gv.hojas_final = []
+                            
+                        if not hasattr(gv, 'hojas_final_sale'):
+                            gv.hojas_final_sale = []
+                        
+                        # Cargar el modelo YOLO
+                        if hasattr(gv, 'model_path'):
+                            try:
+                                device = gv.configuracion.device
+                                gv.model = YOLO(gv.model_path)
+                                gv.model.to(device)
+                            except Exception as e:
+                                print(f"Error al cargar modelo YOLO: {str(e)}")
+                                return  # No continuar si no se puede cargar el modelo
+                        else:
+                            print("No hay ruta del modelo para restaurar")
+                            return
+                        
+                        # Abrir el video
+                        try:
+                            gv.cap = cv2.VideoCapture(gv.filename)
+                            if not gv.cap.isOpened():
+                                print(f"No se pudo abrir el video: {gv.filename}")
+                                return
+                                
+                            # Posicionar en el frame guardado
+                            if gv.frameactual > 0:
+                                # Asegurarse de que no estamos intentando ir más allá del final del video
+                                total_frames = int(gv.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                                if gv.frameactual >= total_frames:
+                                    gv.frameactual = max(0, total_frames - 1)
+                                
+                                gv.cap.set(cv2.CAP_PROP_POS_FRAMES, gv.frameactual)
+                                
+                            # Leer el primer frame para asegurarse de que todo está bien
+                            success, img = gv.cap.read()
+                            if not success:
+                                print("No se pudo leer el primer frame del video restaurado")
+                                return
+                                
+                            # Guardar una copia del frame
+                            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                            gv.img = img_rgb.copy()
+                            
+                        except Exception as e:
+                            print(f"Error al abrir el video: {str(e)}")
+                            return
+                    
+                    # Actualizar interfaz según el estado de configuración
+                    self.update_ui_from_state(tab2_instance)
+                    
+                    # Para evitar problemas con gv.paused
+                    if not hasattr(gv, 'paused'):
+                        gv.paused = True
+                    
+                    # Si no estaba pausado, continuar visualización pero con precaución
+                    if not gv.paused:
+                        tab2_instance.getPausa().configure(text="Pausa", fg_color="#4E8F69")
+                        # Usar after para dar tiempo a que todo se inicialice correctamente
+                        tab2_instance.getlblVideo().after(1000, lambda: visualizar(tab2_instance))
+        
+        except Exception as e:
+            print(f"Error al restaurar estado de UI: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_ui_from_state(self, tab2_instance):
+        """Actualiza la interfaz de usuario basado en el estado cargado"""
+        global gv
+        
+        # Actualizar textos de configuración según el estado
+        if gv.area_seleccionada:
+            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área ✓")
+            tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
+        
+        if gv.entrada_salida_seleccionada:
+            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. E/S ✓")
+            tab2_instance.getBotonSeleccion().configure(fg_color="#4E8F69")
+        
+        if gv.conversion_seleccionada:
+            texto = f"3. Conv ✓ [{gv.cte:.2f} mm²/px²]" if hasattr(gv, 'cte') else "3. Conv ✓"
+            tab2_instance.cambiartexto(tab2_instance.gettxt3(), texto)
+            tab2_instance.getBotonConv().configure(fg_color="#4E8F69")
+        
+        # Si todas las configuraciones están completas, habilitar el botón de pausa
+        if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
+            tab2_instance.cambiartexto(tab2_instance.gettxt4(), "Configuración completa. Pulse Play")
+            tab2_instance.getPausa().configure(state="normal", fg_color="#4E8F69")
+        
+        # Actualizar contador de hojas
+        if hasattr(gv, 'total_hojas'):
+            tab2_instance.cambiartexto(tab2_instance.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
+    
+    def save_state(self):
+        """Guarda el estado actual de la aplicación"""
+        global gv
+        
+        # Solo guardar si hay un video en procesamiento
+        if hasattr(gv, 'filename') and gv.filename and hasattr(gv, 'frameactual') and gv.frameactual > 0:
+            filepath = "antnalyzer_state.pkl"  # Guardar siempre en la carpeta base
+            StateManager.save_application_state(gv, filepath)
+    
     def on_closing(self):
         """Maneja el cierre de la aplicación"""
         try:
+            
             # Limpiar recursos de matplotlib
             tab3 = self.pestanias.tab("Análisis").winfo_children()[0]
             if isinstance(tab3, Tab3):
@@ -800,7 +1175,6 @@ class App(ctk.CTk):
         except:
             self.quit()
             self.destroy()
-        
 
 
 
@@ -809,20 +1183,19 @@ class MyTabView(ctk.CTkTabview):
         super().__init__(master, anchor="w", **kwargs)
 
         #Creamos las pestañas
-        #self.configure(state="disabled")
         self.add("Init")
         self.add("Pantalla Video")
         self.add("Análisis")
 
         # add widgets on tabs
-        self.tab("Init").configure(border_width=0)  # Opcional, para estandarizar el estilo
+        self.tab("Init").configure(border_width=0)  
         Tab1(self.tab("Init"), parent=self)
 
-        self.tab("Pantalla Video").configure(border_width=0)  # Opcional
+        self.tab("Pantalla Video").configure(border_width=0)  
         Tab2(self.tab("Pantalla Video"))
 
         self.tab("Análisis").configure(border_width=0)
-        Tab3(self.tab("Análisis"))  # Nueva clase Tab3
+        Tab3(self.tab("Análisis"))  
         
 
     def habilitar_tabs(self):
@@ -938,8 +1311,20 @@ class Tab1(ctk.CTkFrame):
         selecq.grid(row=9, column=2, sticky="w", padx=5)
         self.crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
 
+        # Botón para seleccionar modelo
+        modelo = ctk.CTkLabel(self, text="Modelo YOLO").grid(row=10, column=0, sticky="w")
+        boton_seleccionar_modelo = ctk.CTkButton(self, text="Seleccionar Modelo", command=self.seleccionar_modelo)
+        boton_seleccionar_modelo.grid(row=10, column=1, sticky="w")
+        modeloq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        modeloq.grid(row=10, column=2, sticky="w", padx=5)
+        self.crear_toolTip(modeloq, 'Seleccionar modelo YOLO para la detección de hojas')
+        
+        # Etiqueta para mostrar el modelo seleccionado
+        self.modelo_label = ctk.CTkLabel(self, text="")
+        self.modelo_label.grid(row=10, column=3, columnspan=2, sticky="w", padx=5)
+
         self.botonok = ctk.CTkButton(self, text="Confirmar", command=self.guardar)
-        self.botonok.grid(row=10, column=0, sticky=W)
+        self.botonok.grid(row=11, column=0, sticky=W)
         self.botonok.configure(state="disabled")
 
         self.pack(expand=True, fill='both')
@@ -988,6 +1373,18 @@ class Tab1(ctk.CTkFrame):
     def callback(self, tipo, P):
         return self.validar_input(tipo, P)
     
+    def seleccionar_modelo(self):
+        global gv
+        modelo_path = fd.askopenfilename(
+            title='Seleccionar modelo YOLO',
+            filetypes=[('Modelo PyTorch', '*.pt')],
+            initialdir='src/models_data'
+        )
+        if modelo_path:
+            gv.model_path = modelo_path
+            # Mostrar tilde y nombre del modelo en la etiqueta
+            nombre_modelo = os.path.basename(modelo_path)
+            self.modelo_label.configure(text=f"✓ {nombre_modelo}", text_color="#4E8F69")
 
 # Clase para la segunda pestaña
 class Tab2(ctk.CTkFrame):
@@ -1501,12 +1898,9 @@ class Tab3(ctk.CTkFrame):
             widget.destroy()
 
 def quit_1():   #Funcion que cierra la ventana principal
-#     #finalizar()
      
-     app.destroy()
-     app.quit()
-     #exit()
-    
+    app.destroy()
+    app.quit()
 
 
 # Bucle de ejecucion de la ventana.
