@@ -22,9 +22,9 @@ Herramienta utilizada para manejar entornos de python:
 
 Luego de instalar Anaconda3 y haber reiniciado la pc:
 * Ejecutar anaconda prompt
-* Ejecutar el comando conda create -n <nombre del entorno> python=3.9.16
+* Ejecutar el comando conda create -n <- nombre del entorno -> python=3.9.16
 * Colocar el archivo requirements.txt en la carpeta donde estamos posicionados (normalmente C:\Users\Usuario)
-* Ejecutar el comando conda activate <nombre del entorno>
+* Ejecutar el comando conda activate <- nombre del entorno ->
 * Ejecutar pip install -r requeriments.txt
 * Utilizando su IDE de preferencia ejecute el archivo antnalyzer.py en el entorno python correspondiente
 
