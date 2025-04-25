@@ -37,6 +37,7 @@ class VGlobals:
         self.point1 = None
         self.point2 = None
         self.bb = False
+        self.show_debug_window = False  # Variable para controlar ventana de debug
         
         # Estados de configuración
         self.area_seleccionada = False
@@ -679,6 +680,28 @@ def visualizar(UI2):
                     if results and len(results) > 0:
                         gv.annotated_frame = results[0].plot()
                         detector(results, gv.frameactual)
+                        
+                        
+                        if gv.show_debug_window:
+                            try:
+                                debug_frame = gv.annotated_frame.copy()
+                                
+                                # Redimensionar para la ventana de debug
+                                debug_height, debug_width = debug_frame.shape[:2]
+                                debug_ratio = 320 / debug_width
+                                debug_new_height = int(debug_height * debug_ratio)
+                                debug_resized = cv2.resize(debug_frame, (320, debug_new_height), interpolation=cv2.INTER_AREA)
+                                
+                                # Convertir para mostrar en la interfaz
+                                debug_rgb = cv2.cvtColor(debug_resized, cv2.COLOR_BGR2RGB) if debug_resized.shape[2] == 3 else debug_resized
+                                debug_im = ImgPIL.fromarray(debug_rgb)
+                                debug_img = ctk.CTkImage(light_image=debug_im, dark_image=debug_im, size=(320, debug_new_height))
+                                
+                                # Actualizar la ventana de debug
+                                UI2.debug_label.configure(image=debug_img)
+                                UI2.debug_label.image = debug_img
+                            except Exception as e:
+                                print(f"Error al actualizar ventana de debug: {str(e)}")
                     else:
                         print("Warning: Resultados de YOLO vacíos")
                         
@@ -704,9 +727,7 @@ def visualizar(UI2):
             # Calcular si toca guardar datos en archivos, con una pequeña tolerancia para redondeo
             guardar_archivos = tiempo_guardado > 0 and abs(gv.garch % tiempo_guardado) == 0
             
-            # Calcular si toca guardar estado (una vez cada 500 frames)
-            guardar_estado_periodico = gv.frameactual % 500 == 0
-            
+
             # Guardar archivos de datos si corresponde
             if guardar_archivos:
                 try:
@@ -724,8 +745,6 @@ def visualizar(UI2):
 
             # Dibujar elementos visuales solo en la imagen original
             cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
-            cv2.line(img, (gv.x1, gv.yfinal), (gv.x2, gv.yfinal), (255, 255, 255), 1)
-            cv2.line(img, (gv.x1, gv.yinicio), (gv.x2, gv.yinicio), (255, 255, 255), 1)
             
             # Dibujar puntos de entrada/salida solo si están definidos
             if gv.entrada_coord:
@@ -733,7 +752,7 @@ def visualizar(UI2):
             if gv.salida_coord:
                 cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
 
-            # Optimización: Convertir y redimensionar la imagen una sola vez
+            # Convertir y redimensionar la imagen una sola vez
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             gv.img = img_rgb.copy()  # Guardar copia solo si es necesario
             
@@ -760,7 +779,6 @@ def visualizar(UI2):
                 UI2.getProgressBar().set(progress)
                 
                 
-
             # Programar siguiente frame con un intervalo adecuado para mantener fluidez
             lblVideo.after(1, lambda: visualizar(UI2))
 
@@ -793,7 +811,7 @@ def handle_end_of_video(UI2, gv):
             finalizar_procesamiento(UI2)
             return
         
-        # Determinar si estamos en el último video de manera segura
+        # Determinar si estamos en el último
         try:
             current_index = gv.filenames.index(gv.filename)
             is_last_video = current_index >= len(gv.filenames) - 1
@@ -906,7 +924,6 @@ seleccion_conversion = False
 
 
 
-
 # Clase principal de la aplicación
 class App(ctk.CTk):
     def __init__(self):
@@ -925,7 +942,6 @@ class App(ctk.CTk):
         # Cargar estado si existe
         self.state_loaded = self.load_state()
         
-
         # Agregar protocolo de cierre
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -1113,7 +1129,6 @@ class App(ctk.CTk):
                     if not hasattr(gv, 'paused'):
                         gv.paused = True
                     
-                    # Si no estaba pausado, continuar visualización pero con precaución
                     if not gv.paused:
                         tab2_instance.getPausa().configure(text="Pausa", fg_color="#4E8F69")
                         # Usar after para dar tiempo a que todo se inicialice correctamente
@@ -1187,7 +1202,6 @@ class MyTabView(ctk.CTkTabview):
         self.add("Pantalla Video")
         self.add("Análisis")
 
-        # add widgets on tabs
         self.tab("Init").configure(border_width=0)  
         Tab1(self.tab("Init"), parent=self)
 
@@ -1382,7 +1396,6 @@ class Tab1(ctk.CTkFrame):
         )
         if modelo_path:
             gv.model_path = modelo_path
-            # Mostrar tilde y nombre del modelo en la etiqueta
             nombre_modelo = os.path.basename(modelo_path)
             self.modelo_label.configure(text=f"✓ {nombre_modelo}", text_color="#4E8F69")
 
@@ -1454,7 +1467,27 @@ class Tab2(ctk.CTkFrame):
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
         self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
 
-        
+
+        self.debug_var = ctk.BooleanVar(value=False)
+        self.debug_checkbox = ctk.CTkCheckBox(
+            self.FrameTxt, 
+            text="Ventana de Detecciones", 
+            variable=self.debug_var,
+            command=self.toggle_debug_window,
+            font=self.my_font2,
+            fg_color="#4E8F69"
+        )
+        self.debug_checkbox.grid(row=5, column=0, padx=5, pady=(10, 10), sticky="w")
+
+        # Crear un frame para la ventana de debug (inicialmente oculto)
+        self.debug_frame = ctk.CTkFrame(self.FrameTxt)
+        self.debug_frame.grid(row=6, column=0, padx=5, pady=(10, 10), sticky="nsew")
+        self.debug_frame.grid_remove()  # Ocultar inicialmente
+
+        # Label para mostrar las detecciones
+        self.debug_label = ctk.CTkLabel(self.debug_frame, text="")
+        self.debug_label.pack(expand=True, fill="both")
+
         self.pack(expand=True)
 
     def getlblVideo(self):
@@ -1625,6 +1658,19 @@ class Tab2(ctk.CTkFrame):
             # Si no están todas las configuraciones completas, mantener deshabilitado el botón de pausa
             self.pausa.configure(state="disabled", fg_color="#2B2B2B")
             self.cambiartexto(self.texto4, "Configure los 3 parámetros")
+
+    def toggle_debug_window(self):
+        global gv
+        gv.show_debug_window = self.debug_var.get()
+        
+        if gv.show_debug_window:
+            # Mostrar la ventana de debug
+            self.debug_frame.grid()
+            # Configurar tamaño inicial
+            self.debug_label.configure(width=320, height=240)
+        else:
+            # Ocultar la ventana de debug
+            self.debug_frame.grid_remove()
 
 class Tab3(ctk.CTkFrame):
     def __init__(self, master):
