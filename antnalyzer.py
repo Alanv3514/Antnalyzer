@@ -37,6 +37,7 @@ class VGlobals:
         self.point1 = None
         self.point2 = None
         self.bb = False
+        self.show_debug_window = False  # Variable para controlar ventana de debug
         
         # Estados de configuración
         self.area_seleccionada = False
@@ -679,6 +680,29 @@ def visualizar(UI2):
                     if results and len(results) > 0:
                         gv.annotated_frame = results[0].plot()
                         detector(results, gv.frameactual)
+                        
+                        # Añadir aquí el código para actualizar la ventana de debug
+                        if gv.show_debug_window:
+                            try:
+                                # Usar el frame anotado por YOLO (ya se ha creado en gv.annotated_frame)
+                                debug_frame = gv.annotated_frame.copy()
+                                
+                                # Redimensionar para la ventana de debug
+                                debug_height, debug_width = debug_frame.shape[:2]
+                                debug_ratio = 320 / debug_width
+                                debug_new_height = int(debug_height * debug_ratio)
+                                debug_resized = cv2.resize(debug_frame, (320, debug_new_height), interpolation=cv2.INTER_AREA)
+                                
+                                # Convertir para mostrar en la interfaz
+                                debug_rgb = cv2.cvtColor(debug_resized, cv2.COLOR_BGR2RGB) if debug_resized.shape[2] == 3 else debug_resized
+                                debug_im = ImgPIL.fromarray(debug_rgb)
+                                debug_img = ctk.CTkImage(light_image=debug_im, dark_image=debug_im, size=(320, debug_new_height))
+                                
+                                # Actualizar la ventana de debug
+                                UI2.debug_label.configure(image=debug_img)
+                                UI2.debug_label.image = debug_img
+                            except Exception as e:
+                                print(f"Error al actualizar ventana de debug: {str(e)}")
                     else:
                         print("Warning: Resultados de YOLO vacíos")
                         
@@ -1454,7 +1478,27 @@ class Tab2(ctk.CTkFrame):
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
         self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
 
-        
+        # Añadir después del texto5 (cerca de la línea 1430)
+        self.debug_var = ctk.BooleanVar(value=False)
+        self.debug_checkbox = ctk.CTkCheckBox(
+            self.FrameTxt, 
+            text="Ventana de Detecciones", 
+            variable=self.debug_var,
+            command=self.toggle_debug_window,
+            font=self.my_font2,
+            fg_color="#4E8F69"
+        )
+        self.debug_checkbox.grid(row=5, column=0, padx=5, pady=(10, 10), sticky="w")
+
+        # Crear un frame para la ventana de debug (inicialmente oculto)
+        self.debug_frame = ctk.CTkFrame(self.FrameTxt)
+        self.debug_frame.grid(row=6, column=0, padx=5, pady=(10, 10), sticky="nsew")
+        self.debug_frame.grid_remove()  # Ocultar inicialmente
+
+        # Label para mostrar las detecciones
+        self.debug_label = ctk.CTkLabel(self.debug_frame, text="")
+        self.debug_label.pack(expand=True, fill="both")
+
         self.pack(expand=True)
 
     def getlblVideo(self):
@@ -1625,6 +1669,19 @@ class Tab2(ctk.CTkFrame):
             # Si no están todas las configuraciones completas, mantener deshabilitado el botón de pausa
             self.pausa.configure(state="disabled", fg_color="#2B2B2B")
             self.cambiartexto(self.texto4, "Configure los 3 parámetros")
+
+    def toggle_debug_window(self):
+        global gv
+        gv.show_debug_window = self.debug_var.get()
+        
+        if gv.show_debug_window:
+            # Mostrar la ventana de debug
+            self.debug_frame.grid()
+            # Configurar tamaño inicial
+            self.debug_label.configure(width=320, height=240)
+        else:
+            # Ocultar la ventana de debug
+            self.debug_frame.grid_remove()
 
 class Tab3(ctk.CTkFrame):
     def __init__(self, master):
