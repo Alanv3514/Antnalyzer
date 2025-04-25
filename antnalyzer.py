@@ -681,10 +681,9 @@ def visualizar(UI2):
                         gv.annotated_frame = results[0].plot()
                         detector(results, gv.frameactual)
                         
-                        # Añadir aquí el código para actualizar la ventana de debug
+                        
                         if gv.show_debug_window:
                             try:
-                                # Usar el frame anotado por YOLO (ya se ha creado en gv.annotated_frame)
                                 debug_frame = gv.annotated_frame.copy()
                                 
                                 # Redimensionar para la ventana de debug
@@ -728,9 +727,7 @@ def visualizar(UI2):
             # Calcular si toca guardar datos en archivos, con una pequeña tolerancia para redondeo
             guardar_archivos = tiempo_guardado > 0 and abs(gv.garch % tiempo_guardado) == 0
             
-            # Calcular si toca guardar estado (una vez cada 500 frames)
-            guardar_estado_periodico = gv.frameactual % 500 == 0
-            
+
             # Guardar archivos de datos si corresponde
             if guardar_archivos:
                 try:
@@ -748,8 +745,6 @@ def visualizar(UI2):
 
             # Dibujar elementos visuales solo en la imagen original
             cv2.rectangle(img, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
-            cv2.line(img, (gv.x1, gv.yfinal), (gv.x2, gv.yfinal), (255, 255, 255), 1)
-            cv2.line(img, (gv.x1, gv.yinicio), (gv.x2, gv.yinicio), (255, 255, 255), 1)
             
             # Dibujar puntos de entrada/salida solo si están definidos
             if gv.entrada_coord:
@@ -757,7 +752,7 @@ def visualizar(UI2):
             if gv.salida_coord:
                 cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
 
-            # Optimización: Convertir y redimensionar la imagen una sola vez
+            # Convertir y redimensionar la imagen una sola vez
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             gv.img = img_rgb.copy()  # Guardar copia solo si es necesario
             
@@ -784,7 +779,6 @@ def visualizar(UI2):
                 UI2.getProgressBar().set(progress)
                 
                 
-
             # Programar siguiente frame con un intervalo adecuado para mantener fluidez
             lblVideo.after(1, lambda: visualizar(UI2))
 
@@ -817,7 +811,7 @@ def handle_end_of_video(UI2, gv):
             finalizar_procesamiento(UI2)
             return
         
-        # Determinar si estamos en el último video de manera segura
+        # Determinar si estamos en el último
         try:
             current_index = gv.filenames.index(gv.filename)
             is_last_video = current_index >= len(gv.filenames) - 1
@@ -930,7 +924,6 @@ seleccion_conversion = False
 
 
 
-
 # Clase principal de la aplicación
 class App(ctk.CTk):
     def __init__(self):
@@ -949,7 +942,6 @@ class App(ctk.CTk):
         # Cargar estado si existe
         self.state_loaded = self.load_state()
         
-
         # Agregar protocolo de cierre
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -1137,7 +1129,6 @@ class App(ctk.CTk):
                     if not hasattr(gv, 'paused'):
                         gv.paused = True
                     
-                    # Si no estaba pausado, continuar visualización pero con precaución
                     if not gv.paused:
                         tab2_instance.getPausa().configure(text="Pausa", fg_color="#4E8F69")
                         # Usar after para dar tiempo a que todo se inicialice correctamente
@@ -1211,7 +1202,6 @@ class MyTabView(ctk.CTkTabview):
         self.add("Pantalla Video")
         self.add("Análisis")
 
-        # add widgets on tabs
         self.tab("Init").configure(border_width=0)  
         Tab1(self.tab("Init"), parent=self)
 
@@ -1406,7 +1396,6 @@ class Tab1(ctk.CTkFrame):
         )
         if modelo_path:
             gv.model_path = modelo_path
-            # Mostrar tilde y nombre del modelo en la etiqueta
             nombre_modelo = os.path.basename(modelo_path)
             self.modelo_label.configure(text=f"✓ {nombre_modelo}", text_color="#4E8F69")
 
@@ -1478,7 +1467,7 @@ class Tab2(ctk.CTkFrame):
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
         self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
 
-        # Añadir después del texto5 (cerca de la línea 1430)
+
         self.debug_var = ctk.BooleanVar(value=False)
         self.debug_checkbox = ctk.CTkCheckBox(
             self.FrameTxt, 
