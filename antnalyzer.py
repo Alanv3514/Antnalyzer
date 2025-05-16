@@ -116,12 +116,18 @@ def seleccionar_carpeta(tab_instance):
         gv.carpeta_seleccionada = carpeta
         tab_instance.cambiar_estado()
 
+
+
+
 def iniciar(UI2):
     global gv
     
     gv.filenames = fd.askopenfilename(multiple=True, title='Seleccione los videos')
     if not gv.filenames:  # Si el usuario cancela la selección
         return
+    
+    UI2.cambiarcolor(UI2.gettxt1(),"#009929")
+    UI2.cambiarcolor(UI2.gettxt2(),"#ff0800")
         
     gv.filename = gv.filenames[0]
     gv.hojas.clear()
@@ -150,8 +156,8 @@ def iniciar(UI2):
     
     # Habilitar solo los botones de selección desde el inicio
     UI2.getPausa().configure(state="disabled", fg_color="#2B2B2B", text="Play")
-    UI2.getBaseBlanca().configure(state="normal", fg_color="#f56767")
-    UI2.getBotonSeleccion().configure(state="normal", fg_color="#2B2B2B")
+    UI2.getBaseBlanca().configure(state="normal", fg_color="#e5be01")
+    UI2.getBotonSeleccionES().configure(state="normal", fg_color="#2B2B2B")
     UI2.getBotonConv().configure(state="normal", fg_color="#2B2B2B")
     
     # Restablecemos los estados de configuración
@@ -159,13 +165,27 @@ def iniciar(UI2):
     gv.entrada_salida_seleccionada = False
     gv.conversion_seleccionada = False
     
-    # Resetear textos de configuración
-    UI2.cambiartexto(UI2.gettxt1(), "1. Área [clic y arrastre]")
-    UI2.cambiartexto(UI2.gettxt2(), "2. E/S [dos clics]")
-    UI2.cambiartexto(UI2.gettxt3(), "3. Conv [dos clics]")
+
+        
+    UI2.cambiartexto(UI2.gettxt1(), "1. Seleccione video para comenzar [Boton Iniciar] ✓")
+    UI2.cambiarcolor(UI2.gettxt1(), "#009929")
     
-    # Mensajes iniciales actualizados
-    UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
+    UI2.cambiartexto(UI2.gettxt2(), "2. Seleccione Área de detección [Boton Área de Deteccion] ◍\n[Click y arrastre para dibujar un rectangulo] ")
+    UI2.cambiarcolor(UI2.gettxt2(),  "#e5be01")
+
+    UI2.cambiartexto(UI2.gettxt3(), "3. Seleccione Entrada y Salida [Boton ↑↓] ✘\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)] ")
+    UI2.cambiarcolor(UI2.gettxt3(),"#ff0800")
+
+    UI2.cambiartexto(UI2.gettxt4(), "4. Seleccione el recuadro de referencia [Boton Conversion] ✘\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ")
+    UI2.cambiarcolor(UI2.gettxt4(), "#ff0800")
+
+    # # Resetear textos de configuración
+    # UI2.cambiartexto(UI2.gettxt1(), "1. Seleccione Área de detección [clic y arrastre]")
+    # UI2.cambiartexto(UI2.gettxt2(), "2. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
+    # UI2.cambiartexto(UI2.gettxt3(), "3. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]")
+    
+    ## Mensajes iniciales actualizados
+    #UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
     
     # Leer y mostrar el primer frame antes de poner en pausa
     success, img = gv.cap.read()
@@ -203,7 +223,6 @@ def on_pause(UI2):
         # No permitir continuar si falta alguna configuración
         gv.paused = True
         UI2.getPausa().configure(text="Play", state="disabled", fg_color="#2B2B2B")
-        UI2.cambiartexto(UI2.gettxt4(), "Complete las 3 configuraciones")
         return
     
     # Si todas las configuraciones están completas, proceder normalmente
@@ -213,7 +232,7 @@ def on_pause(UI2):
     if gv.paused:
         pausa.configure(text="Play", fg_color="#4E8F69")
     else:
-        pausa.configure(text="Pausa", fg_color="#4E8F69")
+        pausa.configure(text="Pausado", fg_color="#4E8F69")
             
     visualizar(UI2)
 
@@ -272,22 +291,26 @@ def base_blanca(UI2):  # Cuando apretamos el boton ponemos el flag up, para pode
     # Cambiar color de botones para indicar el modo activo
     UI2.getBaseBlanca().configure(fg_color="#f56767")  # Rojo para el botón activo
     
+    UI2.cambiarcolor(UI2.gettxt1(),"#009929")
+
     # Respetar los colores de los botones según su estado de configuración
     if gv.entrada_salida_seleccionada:
-        UI2.getBotonSeleccion().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.getBotonSeleccionES().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.cambiarcolor(UI2.gettxt3(),"#009929")
     else:
-        UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        UI2.getBotonSeleccionES().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+
         
     if gv.conversion_seleccionada:
         UI2.getBotonConv().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.cambiarcolor(UI2.gettxt4(),"#009929")
     else:
         UI2.getBotonConv().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+
     
     # Si ya estaba seleccionada, mantenemos el check
     if gv.area_seleccionada:
-        UI2.cambiartexto(UI2.gettxt1(), "1. Área ✓")
-    else:
-        UI2.cambiartexto(UI2.gettxt1(), "1. Área → Seleccione con clic y arrastre")
+        UI2.cambiarcolor(UI2.gettxt2(),"#009929")
     
     visualizar(UI2)
 
@@ -312,21 +335,24 @@ def habilitar_seleccion(UI2):
     # Cambiar color de botones para indicar el modo activo
     if gv.area_seleccionada:
         UI2.getBaseBlanca().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.cambiarcolor(UI2.gettxt1(),"#009929")
     else:
         UI2.getBaseBlanca().configure(fg_color="#2B2B2B")  # Gris si no está configurado
-        
-    UI2.getBotonSeleccion().configure(fg_color="#f56767")  # Rojo para el botón activo
+
+
+    UI2.getBotonSeleccionES().configure(fg_color="#f56767")  # Rojo para el botón activo
     
     if gv.conversion_seleccionada:
         UI2.getBotonConv().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.cambiarcolor(UI2.gettxt1(),"#009929")
     else:
         UI2.getBotonConv().configure(fg_color="#2B2B2B")  # Gris si no está configurado
-    
+
     # Si ya estaba seleccionada, mantenemos el check
     if gv.entrada_salida_seleccionada:
-        UI2.cambiartexto(UI2.gettxt2(), "2. E/S ✓")
-    else:
-        UI2.cambiartexto(UI2.gettxt2(), "2. E/S → Seleccione entrada")
+        UI2.cambiarcolor(UI2.gettxt1(),"#009929")
+
+
     
     visualizar(UI2)
 
@@ -341,22 +367,25 @@ def habilitar_conversion(UI2):
     # Cambiar color de botones para indicar el modo activo
     if gv.area_seleccionada:
         UI2.getBaseBlanca().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.cambiarcolor(UI2.gettxt1(),"#009929")
     else:
         UI2.getBaseBlanca().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+
         
     if gv.entrada_salida_seleccionada:
-        UI2.getBotonSeleccion().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.getBotonSeleccionES().configure(fg_color="#4E8F69")  # Verde si ya está configurado
+        UI2.cambiarcolor(UI2.gettxt2(),"#009929")
     else:
-        UI2.getBotonSeleccion().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+        UI2.getBotonSeleccionES().configure(fg_color="#2B2B2B")  # Gris si no está configurado
+
         
     UI2.getBotonConv().configure(fg_color="#f56767")  # Rojo para el botón activo
     
     # Si ya estaba seleccionada, mantenemos el check
     if gv.conversion_seleccionada:
-        texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
+        texto = UI2.gettxt3().strip("\n")[0]+" ✓\n [%.2f mm²/px²]" % gv.cte
         UI2.cambiartexto(UI2.gettxt3(), texto)
-    else:
-        UI2.cambiartexto(UI2.gettxt3(), "3. Conv → Seleccione primer punto")
+        UI2.cambiarcolor(UI2.gettxt1(),"#009929")
     
     visualizar(UI2)
 
@@ -1057,6 +1086,7 @@ class App(ctk.CTk):
                 if isinstance(child, Tab2):
                     tab2_instance = child
                     break
+
             
             if tab2_instance:
                 # Inicializar filtros Kalman
@@ -1170,16 +1200,21 @@ class App(ctk.CTk):
         
         # Actualizar textos de configuración según el estado
         if gv.area_seleccionada:
-            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área ✓")
+            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área de detección [Boton Área de Deteccion] ✓")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt1(),"#009929")
             tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
-        
+
+
         if gv.entrada_salida_seleccionada:
-            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. E/S ✓")
-            tab2_instance.getBotonSeleccion().configure(fg_color="#4E8F69")
+            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. Entrada y Salida [Boton ↑↓] ✓")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt2(),"#009929")
+            tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
+            
         
         if gv.conversion_seleccionada:
-            texto = f"3. Conv ✓ [{gv.cte:.2f} mm²/px²]" if hasattr(gv, 'cte') else "3. Conv ✓"
+            texto = f"4. Conversion ✓ [{gv.cte:.2f} mm²/px²]" if hasattr(gv, 'cte') else "4. Conversion ✓"
             tab2_instance.cambiartexto(tab2_instance.gettxt3(), texto)
+            tab2_instance.cambiarcolor(tab2_instance.gettxt3(),"#009929")
             tab2_instance.getBotonConv().configure(fg_color="#4E8F69")
         
         # Si todas las configuraciones están completas, habilitar el botón de pausa
@@ -1463,7 +1498,7 @@ class Tab2(ctk.CTkFrame):
         self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", width=96.6, command=lambda: iniciar(self))
         self.inicio.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.base_b = ctk.CTkButton(self.FrameBtn, text="Area de Detec.", width=96.6, command=lambda: base_blanca(self))
+        self.base_b = ctk.CTkButton(self.FrameBtn, text="Area de Detecion", width=96.6, command=lambda: base_blanca(self))
         self.base_b.grid(row=0, column=3, padx=5, pady=(10, 10), sticky="ew")
         self.base_b.configure(state="disabled")
 
@@ -1471,8 +1506,8 @@ class Tab2(ctk.CTkFrame):
         self.pausa.grid(row=0, column=1, padx=5, pady=(10, 10), sticky="ew")
         self.pausa.configure(state="disabled")
 
-        self.boton_seleccion = ctk.CTkButton(self.FrameBtn, text="↑ ↓", width=96.6, command= lambda: habilitar_seleccion(self))
-        self.boton_seleccion.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
+        self.boton_seleccionES = ctk.CTkButton(self.FrameBtn, text="↑ ↓", width=96.6, command= lambda: habilitar_seleccion(self))
+        self.boton_seleccionES.grid(row=0, column=2, padx=5, pady=(10, 10), sticky="ew")
 
         self.boton_conv = ctk.CTkButton(self.FrameBtn, text="Conversion", width=96.6, command= lambda: habilitar_conversion(self))
         self.boton_conv.grid(row=0, column=4, padx=5, pady=(10, 10), sticky="ew")
@@ -1480,18 +1515,18 @@ class Tab2(ctk.CTkFrame):
         salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", width=96.6, command=quit_1)
         salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
         
-
-        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Área de detección [clic y arrastre]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Seleccione video para comenzar [Boton Iniciar]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Área de detección [Boton Área de Deteccion] \n[Click y arrastrar para dibujar un rectangulo]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="Seleccione video para comenzar", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="4. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
+
 
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
         self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
@@ -1539,7 +1574,8 @@ class Tab2(ctk.CTkFrame):
 
     def cambiartexto(self, widget, texto):
         widget.configure(text=texto)
-    
+    def cambiarcolor(self, widget, color):
+        widget.configure(text_color=color)
     def getProgressBar(self):
         return self.progress_bar   
     
@@ -1549,8 +1585,8 @@ class Tab2(ctk.CTkFrame):
     def getBaseBlanca(self):
         return self.base_b
     
-    def getBotonSeleccion(self):
-        return self.boton_seleccion
+    def getBotonSeleccionES(self):
+        return self.boton_seleccionES
 
     def getBotonConv(self):
         return self.boton_conv
@@ -1575,7 +1611,6 @@ class Tab2(ctk.CTkFrame):
             if click_count == 0:
                 gv.point1 = current_point
                 click_count += 1
-                self.cambiartexto(self.texto2, "2. E/S → Seleccione salida")
             elif click_count == 1:
                 gv.point2 = current_point
                 click_count = 0
@@ -1586,7 +1621,6 @@ class Tab2(ctk.CTkFrame):
             if click_count == 0:
                 gv.point1 = current_point
                 click_count += 1
-                self.cambiartexto(self.texto3, "3. Conv → Seleccione segundo punto")
             elif click_count == 1:
                 gv.point2 = current_point
                 click_count = 0
@@ -1637,7 +1671,22 @@ class Tab2(ctk.CTkFrame):
         base_blanca_aux(gv.point1, gv.point2)
         self.base_b.configure(fg_color="#4E8F69")
         
-        self.cambiartexto(self.texto1, "1. Área ✓")
+
+        
+        self.cambiartexto(self.gettxt1(), "1. Área de deteccion ✓")
+        self.cambiarcolor(self.gettxt1(), "#009929")
+
+        self.cambiartexto(self.gettxt2(), "2. Seleccione Entrada y Salida [Boton ↑↓] ◍\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
+        self.cambiarcolor(self.gettxt2(),  "#e5be01")
+
+        self.cambiartexto(self.gettxt3(), "3. Seleccione el recuadro de referencia [Boton Conversion] ✘\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ")
+        self.cambiarcolor(self.gettxt3(),"#ff0800")
+
+        self.cambiartexto(self.gettxt4(), "Configuracion incompleta - Continue los pasos ")
+        self.cambiarcolor(self.gettxt4(), "#ff0800")
+
+        self.getBotonSeleccionES().configure(state="normal", fg_color="#e5be01")
+
         
         # Desactivar el modo de selección de área
         gv.bb = False
@@ -1656,13 +1705,27 @@ class Tab2(ctk.CTkFrame):
         gv.salida_coord = gv.point2
         gv.direccion = detectar_direccion_entrada_salida(gv.entrada_coord, gv.salida_coord)
         gv.entrada_salida_seleccionada = True
-        
-        self.boton_seleccion.configure(fg_color="#4E8F69")
-        self.cambiartexto(self.texto2, "2. E/S ✓")
-        
+
+        self.boton_seleccionES.configure(fg_color="#4E8F69")
+        self.getBotonConv().configure(state="normal", fg_color="#e5be01")
+
+        self.cambiartexto(self.gettxt1(), "1. Área de deteccion [Boton Área de Deteccion] ✓")
+        self.cambiarcolor(self.gettxt1(), "#009929")
+
+        self.cambiartexto(self.gettxt2(), "2. Seleccione Entrada y Salida [Boton ↑↓] ✓\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
+        self.cambiarcolor(self.gettxt2(),  "#009929")
+
+        self.cambiartexto(self.gettxt3(), "3. Seleccione el recuadro de referencia [Boton Conversion] ◍\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ")
+        self.cambiarcolor(self.gettxt3(),"#e5be01")
+
+        self.cambiartexto(self.gettxt4(), "Configuracion incompleta - Continue los pasos ")
+        self.cambiarcolor(self.gettxt4(), "#ff0800")
         # Desactivar el modo de selección de entrada/salida
         seleccion_entrada_habilitada = False
         
+
+        self.getBaseBlanca().configure(fg_color="#4E8F69")
+        self.get().configure(fg_color="#4E8F69")
         # Actualizar la visualización con los puntos
         self._actualizar_display_con_dibujos()
         
@@ -1689,7 +1752,7 @@ class Tab2(ctk.CTkFrame):
         # Calcular factor de conversión de área (mm²/px²)
         gv.cte = factor_lineal ** 2
         
-        texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
+        texto = "3. Conversion ✓ [%.2f mm²/px²]" % gv.cte
         
         self.cambiartexto(self.texto3, texto)
         self.boton_conv.configure(fg_color="#4E8F69")
@@ -1700,6 +1763,17 @@ class Tab2(ctk.CTkFrame):
         # Desactivar el modo de selección de conversión
         seleccion_conversion = False
         
+        self.cambiartexto(self.gettxt1(), "1. Área de deteccion [Boton Área de Deteccion] ✓")
+        self.cambiarcolor(self.gettxt1(), "#009929")
+
+        self.cambiartexto(self.gettxt2(), "2. Seleccione Entrada y Salida [Boton ↑↓] ✓\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
+        self.cambiarcolor(self.gettxt2(),  "#009929")
+
+        self.cambiartexto(self.gettxt3(), "3. Seleccione el recuadro de referencia✓\n[dos clics, uno en cada esquina diagonales opuestas del cuadrado de referencia] ")
+        self.cambiarcolor(self.gettxt3(),"#009929")
+
+        self.cambiartexto(self.gettxt4(), "Configuracion Completa - Puede Presionar Play ")
+        self.cambiarcolor(self.gettxt4(), "#ff0800")
         # Actualizar la visualización con el rectángulo de conversión
         self._actualizar_display_con_dibujos()
         
@@ -1709,13 +1783,9 @@ class Tab2(ctk.CTkFrame):
     def verificar_configuracion_completa(self):
         # Verificar si todas las configuraciones están completas
         if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
-            self.cambiartexto(self.texto4, "Configuración completa. Pulse Play")
-            # Habilitar y cambiar el color del botón de pausa a verde
             self.pausa.configure(state="normal", fg_color="#4E8F69")
         else:
-            # Si no están todas las configuraciones completas, mantener deshabilitado el botón de pausa
             self.pausa.configure(state="disabled", fg_color="#2B2B2B")
-            self.cambiartexto(self.texto4, "Configure los 3 parámetros")
 
     def toggle_debug_window(self):
         global gv
