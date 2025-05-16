@@ -44,6 +44,10 @@ class VGlobals:
         self.entrada_salida_seleccionada = False
         self.conversion_seleccionada = False
         
+        # Puntos de conversión
+        self.conv_p1 = None
+        self.conv_p2 = None
+        
         # Ruta del modelo
         self.model_path = "src/models_data/10-3.pt"
         
@@ -752,22 +756,43 @@ def visualizar(UI2):
             if gv.salida_coord:
                 cv2.circle(img, gv.salida_coord, radius=5, color=(0, 0, 255), thickness=-1)
 
-            # Convertir y redimensionar la imagen una sola vez
+            # Convertir y guardar una copia del frame original
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            gv.img = img_rgb.copy()  # Guardar copia solo si es necesario
+            gv.img = img_rgb.copy()
             
-            # Redimensionar la imagen para que se ajuste a la pantalla
+            # Obtener referencia al widget de video
+            lblVideo = UI2.getlblVideo()
+            
+            # Obtener dimensiones del widget de visualización
+            display_width = lblVideo.winfo_width()
+            display_height = lblVideo.winfo_height()
+            
+            if display_width == 1 or display_height == 1:  # Widget no inicializado completamente
+                display_width = 640
+                display_height = 480
+            
+            # Calcular ratio de aspecto del frame original
             height, width = img_rgb.shape[:2]
-            ratio = 640 / width
-            new_height = int(height * ratio)
-            img_resized = cv2.resize(img_rgb, (640, new_height), interpolation=cv2.INTER_AREA)
+            aspect_ratio = width / height
+            
+            # Calcular dimensiones manteniendo el ratio de aspecto
+            if display_width / display_height > aspect_ratio:
+                # El ancho es el factor limitante
+                new_width = int(display_height * aspect_ratio)
+                new_height = display_height
+            else:
+                # El alto es el factor limitante
+                new_width = display_width
+                new_height = int(display_width / aspect_ratio)
+            
+            # Redimensionar la imagen manteniendo el ratio de aspecto
+            img_resized = cv2.resize(img_rgb, (new_width, new_height), interpolation=cv2.INTER_AREA)
             
             # Crear imagen para la interfaz
             im = ImgPIL.fromarray(img_resized)
-            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, new_height))
-
+            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(new_width, new_height))
+            
             # Actualizar video en UI
-            lblVideo = UI2.getlblVideo()
             lblVideo.configure(image=display_img)
             lblVideo.image = display_img
 
@@ -931,7 +956,7 @@ class App(ctk.CTk):
 
         # Configuración de la ventana principal
         self.title("GUI | CUSTOMTKINTER | HOJAS")
-        self.geometry("1024x640")
+        self.geometry("1280x720")
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("assets/marsh.json")
         
@@ -1260,7 +1285,7 @@ class Tab1(ctk.CTkFrame):
         
         
         #Widgets de fecha
-        fechat = ctk.CTkLabel(self, text="Fecha:")
+        fechat = ctk.CTkLabel(self, text="Fecha del vídeo:")
         fechat.grid(row=0, column=0, sticky="w")
         fecha = ctk.CTkEntry(self, textvariable=self.fechastring, width=150)
         fecha.grid(row=0, column=1, sticky="w")
@@ -1270,11 +1295,11 @@ class Tab1(ctk.CTkFrame):
         self.crear_toolTip(fechaq, 'Fecha del video en formato DD-MM-YYYY')
         
         #Widget de hora
-        horat = ctk.CTkLabel(self, text="Hora:").grid(row=1, column=0, sticky=W)
+        horat = ctk.CTkLabel(self, text="Hora de inicio:").grid(row=1, column=0, sticky=W)
         hora = ctk.CTkEntry(self, textvariable = self.horastring, width=150).grid(row=1, column=1, sticky=W)
         horaq = ctk.CTkButton(self,fg_color="transparent", image=imagenQ, text="", height=16, width=16)
         horaq.grid(row=1, column=2, sticky=W, padx=5)
-        self.crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
+        self.crear_toolTip(horaq, 'Hora de inicio del video en formato HH:MM')
 
         fpst = ctk.CTkLabel(self, text="Fotogramas por Segundo:").grid(row=2, column=0, sticky="w")
         FPS = ctk.CTkEntry(self, textvariable=self.fpstring, width=150, validatecommand=self.vcmd_int)
@@ -1408,7 +1433,7 @@ class Tab2(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master)
 
-        self.my_font = ctk.CTkFont(family="Calibri", size=18, 
+        self.my_font = ctk.CTkFont(family="Calibri", size=14, 
                                              weight="bold") #weight bold/normal, slant=italic/roman
         self.my_font2 = ctk.CTkFont(family="Calibri", size=12, 
                                              weight="bold") #weight bold/normal, slant=italic/roman
@@ -1456,13 +1481,13 @@ class Tab2(ctk.CTkFrame):
         salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
         
 
-        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Área [clic y arrastre]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Área de detección [clic y arrastre]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. E/S [dos clics]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Conv [dos clics]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
         self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
         self.texto4 = ctk.CTkLabel(self.FrameTxt, text="Seleccione video para comenzar", fg_color="transparent", font=self.my_font, text_color="#abcfba")
@@ -1533,8 +1558,9 @@ class Tab2(ctk.CTkFrame):
     def on_click(self, event):
         global gv, click_count, seleccion_entrada_habilitada, seleccion_conversion
         
-        # Capturar el punto actual
-        current_point = (event.x, event.y)
+        # Convertir coordenadas de pantalla a coordenadas originales
+        original_x, original_y = self.display_to_original_coords(event.x, event.y)
+        current_point = (original_x, original_y)
         
         # Modo de selección de área base (click y arrastre)
         if gv.bb == True:
@@ -1569,33 +1595,41 @@ class Tab2(ctk.CTkFrame):
     def on_mouse_move(self, event):
         global gv
         
-        # Actualiza la posicion del segundo punto (esquina opuesta)
-        gv.point2 = (event.x, event.y)
+        # Convertir coordenadas de pantalla a coordenadas originales
+        original_x, original_y = self.display_to_original_coords(event.x, event.y)
+        gv.point2 = (original_x, original_y)
         
         # Crea una copia del frame pausado
         frame_copy = gv.img.copy()
         
-        # Dibujar el rectangulo en la copia del frame
+        # Convertir coordenadas originales a coordenadas de pantalla para dibujar
+        display_point1 = self.original_to_display_coords(gv.point1[0], gv.point1[1])
+        display_point2 = self.original_to_display_coords(gv.point2[0], gv.point2[1])
+        
+        # Dibujar el rectángulo en la copia del frame usando coordenadas originales
         cv2.rectangle(frame_copy, gv.point1, gv.point2, (0, 255, 0), 2)
 
-        frame_copy=ImgPIL.fromarray(frame_copy)
-        # Actualizar la imagen en la interfaz grafica
+        frame_copy = ImgPIL.fromarray(frame_copy)
+        # Actualizar la imagen en la interfaz gráfica
         frame_tk = ctk.CTkImage(light_image=frame_copy, dark_image=frame_copy, size=(640,480))
         self.lblVideo.configure(image=frame_tk)
-        self.lblVideo.image = frame_tk  
+        self.lblVideo.image = frame_tk
 
     def on_release(self, event):
         global gv
         
         if gv.bb:
-            # Capturar el punto final
-            gv.point2 = (event.x, event.y)
+            # Convertir coordenadas de pantalla a coordenadas originales
+            original_x, original_y = self.display_to_original_coords(event.x, event.y)
+            gv.point2 = (original_x, original_y)
+            
             # Limpiar los bindings
             self.lblVideo.unbind("<B1-Motion>")
             self.lblVideo.unbind("<ButtonRelease-1>")
+            
             # Procesar la selección del área
             self.procesar_seleccion_area()
-            
+
     def procesar_seleccion_area(self):
         # Procesar la selección del área base
         global gv, seleccion_entrada_habilitada
@@ -1607,6 +1641,9 @@ class Tab2(ctk.CTkFrame):
         
         # Desactivar el modo de selección de área
         gv.bb = False
+        
+        # Actualizar la visualización con el área seleccionada
+        self._actualizar_display_con_dibujos()
         
         # Verificar si todas las configuraciones están completas
         self.verificar_configuracion_completa()
@@ -1626,6 +1663,9 @@ class Tab2(ctk.CTkFrame):
         # Desactivar el modo de selección de entrada/salida
         seleccion_entrada_habilitada = False
         
+        # Actualizar la visualización con los puntos
+        self._actualizar_display_con_dibujos()
+        
         # Verificar si todas las configuraciones están completas
         self.verificar_configuracion_completa()
     
@@ -1633,11 +1673,22 @@ class Tab2(ctk.CTkFrame):
         # Procesar la selección de conversión
         global gv, seleccion_conversion
         
-        # Calcular la distancia entre los dos puntos seleccionados
-        distance = math.sqrt((gv.point2[0]-gv.point1[0])**2 + (gv.point2[1]-gv.point1[1])**2)
+        # Guardar los puntos de conversión
+        gv.conv_p1 = gv.point1
+        gv.conv_p2 = gv.point2
         
-        # Establecer la constante de conversión
-        gv.cte = (10**2)/(distance**2)
+        # Calcular la distancia en píxeles entre los dos puntos seleccionados
+        distance_px = math.sqrt((gv.conv_p2[0]-gv.conv_p1[0])**2 + (gv.conv_p2[1]-gv.conv_p1[1])**2)
+        
+        # La distancia real es siempre 10mm
+        MEDIDA_REAL_MM = 10.0
+        
+        # Calcular factor de conversión lineal (mm/px)
+        factor_lineal = MEDIDA_REAL_MM / distance_px
+        
+        # Calcular factor de conversión de área (mm²/px²)
+        gv.cte = factor_lineal ** 2
+        
         texto = "3. Conv ✓ [%.2f mm²/px²]" % gv.cte
         
         self.cambiartexto(self.texto3, texto)
@@ -1649,9 +1700,12 @@ class Tab2(ctk.CTkFrame):
         # Desactivar el modo de selección de conversión
         seleccion_conversion = False
         
+        # Actualizar la visualización con el rectángulo de conversión
+        self._actualizar_display_con_dibujos()
+        
         # Verificar si todas las configuraciones están completas
         self.verificar_configuracion_completa()
-        
+
     def verificar_configuracion_completa(self):
         # Verificar si todas las configuraciones están completas
         if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
@@ -1675,6 +1729,113 @@ class Tab2(ctk.CTkFrame):
         else:
             # Ocultar la ventana de debug
             self.debug_frame.grid_remove()
+
+    def get_display_scale(self):
+        """Calcula el factor de escala entre el frame original y el frame mostrado"""
+        if not hasattr(gv, 'img') or gv.img is None:
+            return 1.0, 1.0, 0, 0
+
+        # Obtener dimensiones del frame original
+        orig_height, orig_width = gv.img.shape[:2]
+        
+        # Obtener dimensiones del widget de visualización
+        display_width = self.lblVideo.winfo_width()
+        display_height = self.lblVideo.winfo_height()
+        
+        # Calcular ratios de escala
+        width_ratio = display_width / orig_width
+        height_ratio = display_height / orig_height
+        
+        # Calcular offsets para centrado
+        scaled_width = int(orig_width * width_ratio)
+        scaled_height = int(orig_height * height_ratio)
+        
+        x_offset = (display_width - scaled_width) // 2
+        y_offset = (display_height - scaled_height) // 2
+        
+        return width_ratio, height_ratio, x_offset, y_offset
+
+    def display_to_original_coords(self, display_x, display_y):
+        """Convierte coordenadas de la pantalla a coordenadas del frame original"""
+        width_ratio, height_ratio, x_offset, y_offset = self.get_display_scale()
+        
+        # Ajustar por offset
+        adjusted_x = display_x - x_offset
+        adjusted_y = display_y - y_offset
+        
+        # Convertir a coordenadas originales
+        original_x = int(adjusted_x / width_ratio)
+        original_y = int(adjusted_y / height_ratio)
+        
+        # Asegurar que las coordenadas estén dentro de los límites del frame original
+        if hasattr(gv, 'img'):
+            height, width = gv.img.shape[:2]
+            original_x = max(0, min(original_x, width - 1))
+            original_y = max(0, min(original_y, height - 1))
+        
+        return original_x, original_y
+
+    def original_to_display_coords(self, original_x, original_y):
+        """Convierte coordenadas del frame original a coordenadas de pantalla"""
+        width_ratio, height_ratio, x_offset, y_offset = self.get_display_scale()
+        
+        # Convertir a coordenadas de pantalla
+        display_x = int(original_x * width_ratio) + x_offset
+        display_y = int(original_y * height_ratio) + y_offset
+        
+        return display_x, display_y
+
+    def _actualizar_display_con_dibujos(self):
+        """Actualiza la visualización con todos los elementos de configuración"""
+        if not hasattr(gv, 'img') or gv.img is None:
+            return
+            
+        # Crear una copia de la imagen base
+        frame_copy = gv.img.copy()
+        
+        # Dibujar área seleccionada si existe
+        if gv.area_seleccionada and hasattr(gv, 'x1'):
+            cv2.rectangle(frame_copy, (gv.x1, gv.y1), (gv.x2, gv.y2), (0, 255, 0), 2)
+        
+        # Dibujar puntos de entrada/salida si existen
+        if gv.entrada_salida_seleccionada:
+            if gv.entrada_coord:
+                cv2.circle(frame_copy, gv.entrada_coord, radius=5, color=(0, 255, 0), thickness=-1)
+            if gv.salida_coord:
+                cv2.circle(frame_copy, gv.salida_coord, radius=5, color=(255, 0, 0), thickness=-1)
+        
+        # Dibujar rectángulo de conversión si existe
+        if gv.conversion_seleccionada and gv.conv_p1 and gv.conv_p2:
+            cv2.rectangle(frame_copy, gv.conv_p1, gv.conv_p2, (0, 0, 255), 1)
+        
+        # Obtener dimensiones del widget
+        display_width = self.lblVideo.winfo_width()
+        display_height = self.lblVideo.winfo_height()
+        
+        if display_width == 1 or display_height == 1:
+            display_width = 640
+            display_height = 480
+        
+        # Calcular ratio de aspecto
+        height, width = frame_copy.shape[:2]
+        aspect_ratio = width / height
+        
+        # Calcular dimensiones manteniendo el ratio de aspecto
+        if display_width / display_height > aspect_ratio:
+            new_width = int(display_height * aspect_ratio)
+            new_height = display_height
+        else:
+            new_width = display_width
+            new_height = int(display_width / aspect_ratio)
+        
+        # Redimensionar la imagen
+        img_resized = cv2.resize(frame_copy, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        
+        # Actualizar la imagen en la interfaz
+        im = ImgPIL.fromarray(img_resized)
+        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(new_width, new_height))
+        self.lblVideo.configure(image=display_img)
+        self.lblVideo.image = display_img
 
 class Tab3(ctk.CTkFrame):
     def __init__(self, master):
