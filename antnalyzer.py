@@ -93,7 +93,7 @@ class Configuracion:    #Clase de configuracion
         return self.device
     
     def __str__(self):
-        return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Tiempo de guardado: {self.tiempo}, Dispositivo: {self.device}"
+        return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Intervalo de Guardado: {self.tiempo}, Procesar con: {self.device}"
 
     def __json__(self):
         return '["config": {"fecha":{self.fecha}, "hora":{self.hora}, "FPS":{self.fps},"FPSDist":{self.fpsdist}, "FPSAp":{self.fpsapa}, "Confianza":{self.conf}, "CantidadApariciones": {self.cantapa}, "DeltaTiempo": {self.tiempo}},"data":]'
@@ -1237,7 +1237,7 @@ class Tab1(ctk.CTkFrame):
         self.cantstring = ctk.IntVar(value=10)
         self.tiemstring = ctk.DoubleVar(value=10)
 
-        devicet = ctk.CTkLabel(self, text="Dispositivo:").grid(row=8, column=0, sticky="w")
+        devicet = ctk.CTkLabel(self, text="Procesar con:").grid(row=8, column=0, sticky="w")
         self.devices = ['cpu']  # Siempre incluir CPU
         if torch.cuda.is_available():
             for i in range(torch.cuda.device_count()):
@@ -1252,7 +1252,7 @@ class Tab1(ctk.CTkFrame):
 
         deviceq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
         deviceq.grid(row=8, column=2, sticky="w", padx=5)
-        self.crear_toolTip(deviceq, 'Selecciona el dispositivo de procesamiento para el modelo.\nCPU: Procesamiento en CPU\nCUDA: Procesamiento en GPU')
+        self.crear_toolTip(deviceq, 'Selecciona el dispositivo a utilizar para realizar el procesamiento del modelo.\nCPU: Procesamiento en CPU\nCUDA: Procesamiento en GPU')
 
         # Funciones de validación
         self.vcmd_int = (self.register(lambda P: self.callback('int', P)), '%P')
@@ -1276,12 +1276,12 @@ class Tab1(ctk.CTkFrame):
         horaq.grid(row=1, column=2, sticky=W, padx=5)
         self.crear_toolTip(horaq, 'Hora de inicion del video en formato HH:MM')
 
-        fpst = ctk.CTkLabel(self, text="FPS:").grid(row=2, column=0, sticky="w")
+        fpst = ctk.CTkLabel(self, text="Fotogramas por Segundo:").grid(row=2, column=0, sticky="w")
         FPS = ctk.CTkEntry(self, textvariable=self.fpstring, width=150, validatecommand=self.vcmd_int)
         FPS.grid(row=2, column=1, sticky="w")
         fpsq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
         fpsq.grid(row=2, column=2, sticky="w", padx=5)
-        self.crear_toolTip(fpsq, 'FPS del vídeo')
+        self.crear_toolTip(fpsq, 'Fotogramas por Segundo en que fue grabado el vídeo')
         
         fpsdist = ctk.CTkLabel(self, text="Distancia de Frames:").grid(row=3, column=0, sticky="w")
         fpsdis = ctk.CTkEntry(self, textvariable=self.fpsdisstring, width=150, validate="key", validatecommand=self.vcmd_int)
@@ -1311,7 +1311,7 @@ class Tab1(ctk.CTkFrame):
         cantapaq.grid(row=6, column=2, sticky="w", padx=5)
         self.crear_toolTip(cantapaq, 'Cantidad de apariciones mínimas necesarias para dar por positiva la completa detección')
 
-        tiemt = ctk.CTkLabel(self, text="Tiempo de guardado:").grid(row=7, column=0, sticky="w")
+        tiemt = ctk.CTkLabel(self, text="Intervalo de Guardado:").grid(row=7, column=0, sticky="w")
         tiem = ctk.CTkEntry(self, textvariable=self.tiemstring, width=150, validate="key", validatecommand=self.vcmd_float)
         tiem.grid(row=7, column=1, sticky="w")
         tiemq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
@@ -1350,7 +1350,11 @@ class Tab1(ctk.CTkFrame):
         msg.showerror('Error!', 'Error en los parametros de configuracion')
     
     def crear_toolTip(self, widget, texto):
+            # Obtiene la posición del widget en la pantalla
+        xTT = widget.winfo_rootx() + widget.winfo_width() + 5  # Desplazamiento hacia la derecha
+        yTT = widget.winfo_rooty()
         toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.3, bg_color="#000000", width=150)
+        toolTip.geometry(f"+{xTT}+{yTT}")
         
     def guardar(self):      #Guardamos en el objeto configuracion los valores ingresados en las entradas
             global gv
