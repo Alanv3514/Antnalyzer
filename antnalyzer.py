@@ -1492,16 +1492,17 @@ class Tab1(ctk.CTkFrame):
                 size=(300, 120)
             )
             self.label_utn = ctk.CTkLabel(self.logos_frame, image=logo_utn, text="")
-            self.label_utn.grid(row=0, column=0, pady=(0, 20), sticky="w")
+            self.label_utn.grid(row=0, column=0, pady=(0, 0), sticky="n")
+
             
             # Logo Eco Hormigas
             logo_eco = ctk.CTkImage(
                 light_image=ImgPIL.open('assets/eco_hormigas.png'),
                 dark_image=ImgPIL.open('assets/eco_hormigas.png'),
-                size=(489, 80)
+                size=(489, 400)
             )
             self.label_eco = ctk.CTkLabel(self.logos_frame, image=logo_eco, text="")
-            self.label_eco.grid(row=1, column=0, pady=(20, 0), sticky="w")
+            self.label_eco.grid(row=1, column=0, pady=(0, 0), sticky="w")
             
         except Exception as e:
             print(f"Error al cargar los logos: {str(e)}")
