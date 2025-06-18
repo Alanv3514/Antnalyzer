@@ -1347,6 +1347,9 @@ class Tab1(ctk.CTkFrame):
         super().__init__(master)
         # Configuración de los widgets de la pestaña 1
         self.parent=parent
+        
+        # Configurar el grid para permitir espacio para los logos
+        self.grid_columnconfigure(4, weight=1)  # Columna para los logos
         imagenQ = ctk.CTkImage(light_image=ImgPIL.open('assets/interrogatorio_2.png'),
                                      dark_image=ImgPIL.open('assets/interrogatorio_2.png'),
                                      size=(16,16))
@@ -1471,7 +1474,43 @@ class Tab1(ctk.CTkFrame):
         self.botonok.grid(row=12, column=0, sticky=W)
         self.botonok.configure(state="disabled")
 
+        # Frame para los logos a la derecha
+        self.logos_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.logos_frame.grid(row=0, column=4, rowspan=13, padx=20, pady=10, sticky="nsew")
+        
+        # Cargar y mostrar los logos
+        self.crear_logos()
+
         self.pack(expand=True, fill='both')
+
+    def crear_logos(self):
+        try:
+            # Logo UTN
+            logo_utn = ctk.CTkImage(
+                light_image=ImgPIL.open('assets/utn2.png'),
+                dark_image=ImgPIL.open('assets/utn2.png'),
+                size=(300, 120)
+            )
+            self.label_utn = ctk.CTkLabel(self.logos_frame, image=logo_utn, text="")
+            self.label_utn.grid(row=0, column=0, pady=(0, 20), sticky="w")
+            
+            # Logo Eco Hormigas
+            logo_eco = ctk.CTkImage(
+                light_image=ImgPIL.open('assets/eco_hormigas.png'),
+                dark_image=ImgPIL.open('assets/eco_hormigas.png'),
+                size=(489, 80)
+            )
+            self.label_eco = ctk.CTkLabel(self.logos_frame, image=logo_eco, text="")
+            self.label_eco.grid(row=1, column=0, pady=(20, 0), sticky="w")
+            
+        except Exception as e:
+            print(f"Error al cargar los logos: {str(e)}")
+            # Mostrar labels de texto si no se pueden cargar las imágenes
+            self.label_utn_text = ctk.CTkLabel(self.logos_frame, text="Logo UTN", font=ctk.CTkFont(size=16))
+            self.label_utn_text.grid(row=0, column=0, pady=(0, 20), sticky="w")
+            
+            self.label_eco_text = ctk.CTkLabel(self.logos_frame, text="Logo Eco Hormigas", font=ctk.CTkFont(size=16))
+            self.label_eco_text.grid(row=1, column=0, pady=(20, 0), sticky="w")
 
     def cambiar_estado(self):
         self.botonok.configure(state="normal")
