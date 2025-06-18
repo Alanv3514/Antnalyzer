@@ -142,7 +142,8 @@ def comparar(dx, dy, xmed, ymed, area, frameactual, gv,kf): # Compara la posicio
     gv: Variable que almacena las hojas detectadas y sus atributos.
     kf: Lista que contiene los filtros de Kalman para cada hoja.
     """ 
-    k=1
+    # Usar el factor k de la configuración si está disponible, sino usar 1.0 por defecto
+    k = gv.configuracion.getfactork() if hasattr(gv, 'configuracion') and gv.configuracion else 1.0
     hp=math.hypot(dx, dy)
     centro=(xmed, ymed)
     color = (255, 0, 0)
