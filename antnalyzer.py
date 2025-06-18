@@ -404,10 +404,9 @@ def eliminar_hojas(hojas, frame_actual):
             if hoja.getcantapariciones()>gv.configuracion.getcantapa():
                 gv.valid_ID += 1 # Aumentamos el ID valido
                 if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
-                    if (primer_aparicion.gety() - ultima_aparicion.gety()) > 30:
-                        hoja.valid_id = gv.valid_ID
-                        gv.hojas_final.append(hoja)
-                        gv.hojas_final = filtrar_duplicados(gv.hojas_final)
+                    hoja.valid_id = gv.valid_ID
+                    gv.hojas_final.append(hoja)
+                    gv.hojas_final = filtrar_duplicados(gv.hojas_final)
                 elif bandera_superada==False:
                     hoja.valid_id = gv.valid_ID
                     gv.hojas_final_sale.append(hoja)
@@ -523,36 +522,68 @@ def evaluar_seguimiento(hojas_final):
 
 def filtrar_duplicados(hojas):
     """
-    Filtra las hojas duplicadas incluyendo aquellas que tienen patrones de duplicación
+    Filtra las hojas duplicadas manteniendo la hoja original y eliminando solo los duplicados.
+    Utiliza criterios más robustos para la detección de duplicados.
     """
     hojas_filtradas = []
     hojas_a_descartar = set()
     
-    for i, hoja1 in enumerate(hojas):
+    # Ordenar hojas por ID para mantener consistencia
+    hojas_ordenadas = sorted(hojas, key=lambda x: x.getID())
+    
+    for i, hoja1 in enumerate(hojas_ordenadas):
         if hoja1.getID() in hojas_a_descartar:
             continue
             
-        duplicados_encontrados = 0  # Contador de duplicados para esta hoja
+        # Obtener todas las apariciones de la hoja1
+        apariciones1 = hoja1.apariciones
         
-        for j, hoja2 in enumerate(hojas[i+1:], i+1):
-            ult_apar1 = hoja1.apariciones[-1]
-            ult_apar2 = hoja2.apariciones[-1]
+        for j, hoja2 in enumerate(hojas_ordenadas[i+1:], i+1):
+            if hoja2.getID() in hojas_a_descartar:
+                continue
+                
+            # Obtener todas las apariciones de la hoja2
+            apariciones2 = hoja2.apariciones
             
-            # Verificamos frames cercanos
-            if abs(ult_apar1.getframe() - ult_apar2.getframe()) <= 5:
-                dist = math.hypot(ult_apar1.getx() - ult_apar2.getx(), 
-                                ult_apar1.gety() - ult_apar2.gety())
-                if dist < 5:
-                    duplicados_encontrados += 1
-                    hojas_a_descartar.add(hoja1.getID())
-                    hojas_a_descartar.add(hoja2.getID())
+            # Verificar si hay superposición significativa en las trayectorias
+            duplicado = False
+            coincidencias = 0
+            total_comparaciones = 0
+            
+            # Comparar las últimas N apariciones de cada hoja
+            n_comparaciones = min(5, len(apariciones1), len(apariciones2))
+            
+            for k in range(n_comparaciones):
+                ap1 = apariciones1[-(k+1)]
+                ap2 = apariciones2[-(k+1)]
+                
+                # Verificar frames cercanos
+                if abs(ap1.getframe() - ap2.getframe()) <= 5:
+                    # Calcular distancia euclidiana
+                    dist = math.hypot(ap1.getx() - ap2.getx(), 
+                                    ap1.gety() - ap2.gety())
                     
-        # Si la hoja tiene más de un duplicado, la marcamos para eliminar
-        if duplicados_encontrados > 1:
-            hojas_a_descartar.add(hoja1.getID())
+                    # Verificar área similar
+                    area_diff = abs(ap1.getarea() - ap2.getarea()) / max(ap1.getarea(), ap2.getarea())
+                    
+                    # Criterios más estrictos para considerar duplicado
+                    if dist < 5 and area_diff < 0.3:  # 30% de diferencia máxima en área
+                        coincidencias += 1
+                    total_comparaciones += 1
+            
+            # Si hay suficientes coincidencias, considerar como duplicado
+            if total_comparaciones > 0 and coincidencias / total_comparaciones > 0.6:  # 60% de coincidencias
+                duplicado = True
+                
+                # Mantener la hoja con más apariciones o la que apareció primero
+                if len(apariciones1) >= len(apariciones2):
+                    hojas_a_descartar.add(hoja2.getID())
+                else:
+                    hojas_a_descartar.add(hoja1.getID())
+                    break  # Salir del bucle interno ya que esta hoja será descartada
     
-    # Filtramos las hojas
-    hojas_filtradas = [hoja for hoja in hojas if hoja.getID() not in hojas_a_descartar]
+    # Filtrar las hojas manteniendo solo las no duplicadas
+    hojas_filtradas = [hoja for hoja in hojas_ordenadas if hoja.getID() not in hojas_a_descartar]
     
     return hojas_filtradas
 
@@ -1725,7 +1756,6 @@ class Tab2(ctk.CTkFrame):
         
 
         self.getBaseBlanca().configure(fg_color="#4E8F69")
-        self.get().configure(fg_color="#4E8F69")
         # Actualizar la visualización con los puntos
         self._actualizar_display_con_dibujos()
         
