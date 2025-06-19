@@ -1523,7 +1523,7 @@ class Tab1(ctk.CTkFrame):
             # Obtiene la posición del widget en la pantalla
         xTT = widget.winfo_rootx() + widget.winfo_width() + 5  # Desplazamiento hacia la derecha
         yTT = widget.winfo_rooty()
-        toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.3, bg_color="#000000", width=150)
+        toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.7, bg_color="#000000", width=150)
         toolTip.geometry(f"+{xTT}+{yTT}")
         
     def guardar(self):      #Guardamos en el objeto configuracion los valores ingresados en las entradas
