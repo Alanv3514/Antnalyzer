@@ -1083,6 +1083,7 @@ class App(ctk.CTk):
                     loaded = StateManager.load_application_state(gv, filepath)
                     
                     if loaded:
+                        print(gv.configuracion.gethora())
                         # Si se cargó el estado correctamente, configurar la interfaz
                         self.after(500, self.restore_ui_state)
                         return True
@@ -1876,7 +1877,7 @@ class Tab2(ctk.CTkFrame):
         distance_px = math.sqrt((gv.conv_p2[0]-gv.conv_p1[0])**2 + (gv.conv_p2[1]-gv.conv_p1[1])**2)
         
         # La distancia real es siempre 10mm
-        MEDIDA_REAL_MM = 10.0
+        MEDIDA_REAL_MM = math.sqrt(10^2+10^2)
         
         # Calcular factor de conversión lineal (mm/px)
         factor_lineal = MEDIDA_REAL_MM / distance_px
