@@ -31,3 +31,9 @@ Luego de instalar Anaconda3 y haber reiniciado la pc:
 ## Ejecutable
 
 https://github.com/Alanv3514/Antnalyzer/releases
+
+## Licencia
+
+Este proyecto está licenciado bajo los términos de la [GNU Affero General Public License v3.0](https://www.gnu.org/licenses/agpl-3.0.html).
+
+Consulta el archivo [LICENSE](./LICENSE) para más información.
