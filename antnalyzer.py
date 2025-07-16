@@ -154,6 +154,10 @@ def iniciar(UI2):
     gv.frameactual = 0
     gv.frameaux = 0
     
+    # Inicializar variables de continuidad temporal para nueva sesión
+    gv.frameactual_total = 0
+    gv.garch = 0.0
+    
     # Inicializar variables para procesamiento
     gv.entrada_coord = None
     gv.salida_coord = None
@@ -184,13 +188,6 @@ def iniciar(UI2):
     UI2.cambiartexto(UI2.gettxt4(), "4. Seleccione el recuadro de referencia [Boton Conversion] ✘\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ")
     UI2.cambiarcolor(UI2.gettxt4(), "#ff0800")
 
-    # # Resetear textos de configuración
-    # UI2.cambiartexto(UI2.gettxt1(), "1. Seleccione Área de detección [clic y arrastre]")
-    # UI2.cambiartexto(UI2.gettxt2(), "2. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
-    # UI2.cambiartexto(UI2.gettxt3(), "3. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]")
-    
-    ## Mensajes iniciales actualizados
-    #UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
     
     # Leer y mostrar el primer frame antes de poner en pausa
     success, img = gv.cap.read()
@@ -408,16 +405,26 @@ def eliminar_hojas(hojas, frame_actual):
             # Agregar la hoja al array de hojas perdidas
             if hoja.getcantapariciones()>gv.configuracion.getcantapa():
                 gv.valid_ID += 1 # Aumentamos el ID valido
-                if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
-                    hoja.valid_id = gv.valid_ID
-                    gv.hojas_final.append(hoja)
-                    if gv.filtrado_estricto:
-                        gv.hojas_final = filtrar_duplicados_estricto(gv.hojas_final)
-                    else:
-                        gv.hojas_final = filtrar_duplicados(gv.hojas_final)
-                elif bandera_superada==False:
-                    hoja.valid_id = gv.valid_ID
-                    gv.hojas_final_sale.append(hoja)
+                
+                # Calcular distancia entre primera y última aparición
+                distancia_recorrida = math.hypot(
+                    ultima_aparicion.getx() - primer_aparicion.getx(),
+                    ultima_aparicion.gety() - primer_aparicion.gety()
+                )
+
+                # Solo procesar la hoja si la distancia recorrida es mayor a 5 píxeles, esto permite descartar hojas que esten estaticas.
+                if distancia_recorrida > 5:
+                    if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
+                        hoja.valid_id = gv.valid_ID
+                        gv.hojas_final.append(hoja)
+                        if gv.filtrado_estricto:
+                            gv.hojas_final = filtrar_duplicados_estricto(gv.hojas_final)
+                        else:
+                            gv.hojas_final = filtrar_duplicados(gv.hojas_final)
+                    elif bandera_superada==False:
+                        hoja.valid_id = gv.valid_ID
+                        gv.hojas_final_sale.append(hoja)
+                # Si la distancia es <= 5 píxeles, se descarta la hoja (no se agrega a ninguna lista)
             # Eliminar la hoja del array hojas
             del hojas[i]
     return hojas
@@ -819,8 +826,9 @@ def visualizar(UI2):
                     traceback.print_exc()
 
             # Cálculos de tiempo
-            sec = gv.frameactual / gv.configuracion.getfps()
-            s = datetime.timedelta(seconds=int(sec))
+            # Tiempo total acumulado (incluyendo videos anteriores + tiempo actual)
+            sec_total = (gv.frameactual_total + gv.frameactual) / gv.configuracion.getfps()
+            s = datetime.timedelta(seconds=int(sec_total))
             hora = gv.configuracion.gethora() + s
             
             # Actualizar UI de manera eficiente
@@ -828,7 +836,7 @@ def visualizar(UI2):
             UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
 
             # Manejo de guardado automático
-            gv.garch = sec / 60
+            gv.garch = sec_total / 60
             tiempo_guardado = float(gv.configuracion.gettiempo())
             
             # Calcular si toca guardar datos en archivos, con una pequeña tolerancia para redondeo
@@ -934,6 +942,17 @@ def handle_end_of_video(UI2, gv):
             next_index = current_index + 1
             gv.filename = gv.filenames[next_index]
             
+            # Mantener continuidad temporal: acumular frames del video anterior
+            gv.frameactual_total += gv.frameactual
+            
+            # Actualizar garch con el tiempo total acumulado
+            sec_total = gv.frameactual_total / gv.configuracion.getfps()
+            gv.garch = sec_total / 60
+            
+            # Resetear frameactual para el nuevo video (posición dentro del video actual)
+            gv.frameactual = 0
+            gv.frameaux = 0
+            
             try:
                 gv.cap = cv2.VideoCapture(gv.filename)
                 if not gv.cap.isOpened():
@@ -941,6 +960,7 @@ def handle_end_of_video(UI2, gv):
                     # Intentar con el siguiente si este falla
                     handle_end_of_video(UI2, gv)
                     return
+                
                 # Continuar con la visualización
                 visualizar(UI2)
             except Exception as e:
@@ -1000,6 +1020,8 @@ gv.font=cv2.FONT_HERSHEY_SIMPLEX
 gv.total_hojas=0
 gv.frameactual=0
 gv.frameaux=0
+gv.frameactual_total=0  # Frames totales acumulados de todos los videos
+gv.garch=0.0  # Tiempo en minutos desde el inicio de toda la sesión
 gv.cte=0
 gv.bb=False
 kf=[]
@@ -1206,12 +1228,22 @@ class App(ctk.CTk):
                                 print(f"No se pudo abrir el video: {gv.filename}")
                                 return
                                 
+                            # Al restaurar, frameactual ya contiene la posición correcta dentro del video actual
+                            # frameactual_total contiene el tiempo total acumulado de sesiones anteriores
+                            total_frames_video = int(gv.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                            
+                            # Verificar que frameactual esté dentro del rango válido del video actual
+                            if gv.frameactual >= total_frames_video:
+                                gv.frameactual = max(0, total_frames_video - 1)
+                            
+                            # Calcular tiempo total para mostrar en logs
+                            tiempo_total_min = (gv.frameactual_total + gv.frameactual) / gv.configuracion.getfps() / 60
+                            
                             # Posicionar en el frame guardado
                             if gv.frameactual > 0:
                                 # Asegurarse de que no estamos intentando ir más allá del final del video
-                                total_frames = int(gv.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                                if gv.frameactual >= total_frames:
-                                    gv.frameactual = max(0, total_frames - 1)
+                                if gv.frameactual >= total_frames_video:
+                                    gv.frameactual = max(0, total_frames_video - 1)
                                 
                                 gv.cap.set(cv2.CAP_PROP_POS_FRAMES, gv.frameactual)
                                 
@@ -1252,21 +1284,24 @@ class App(ctk.CTk):
         
         # Actualizar textos de configuración según el estado
         if gv.area_seleccionada:
-            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área de detección [Boton Área de Deteccion] ✓")
-            tab2_instance.cambiarcolor(tab2_instance.gettxt1(),"#009929")
+            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área de deteccion [Boton Área de Deteccion] ✓")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt1(), "#009929")
             tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
 
 
         if gv.entrada_salida_seleccionada:
-            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. Entrada y Salida [Boton ↑↓] ✓")
-            tab2_instance.cambiarcolor(tab2_instance.gettxt2(),"#009929")
+            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. Seleccione Entrada y Salida [Boton ↑↓] ✓\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt2(),  "#009929")
             tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
-            
-        
+
         if gv.conversion_seleccionada:
-            texto = f"4. Conversion ✓ [{gv.cte:.2f} mm²/px²]" if hasattr(gv, 'cte') else "4. Conversion ✓"
-            tab2_instance.cambiartexto(tab2_instance.gettxt3(), texto)
+            tab2_instance.cambiartexto(tab2_instance.gettxt3(), "3. Seleccione el recuadro de referencia✓\n[dos clics, uno en cada esquina diagonales opuestas del cuadrado de referencia] ")
             tab2_instance.cambiarcolor(tab2_instance.gettxt3(),"#009929")
+
+       
+        if gv.conversion_seleccionada:
+            tab2_instance.cambiartexto(tab2_instance.gettxt4(), "Configuracion Completa - Puede Presionar Play ")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt4(), "#ff0800")
             tab2_instance.getBotonConv().configure(fg_color="#4E8F69")
             
             # Actualizar también el nuevo widget de conversión
@@ -1627,16 +1662,16 @@ class Tab2(ctk.CTkFrame):
         salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", width=96.6, command=quit_1)
         salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
         
-        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Seleccione video para comenzar [Boton Iniciar]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Seleccione video para comenzar [Boton Iniciar] ✓", fg_color="transparent", font=self.my_font, text_color="#009929")
         self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Área de detección [Boton Área de Deteccion] \n[Click y arrastrar para dibujar un rectangulo]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Seleccione Área de detección [Boton Área de Deteccion] ◍\n[Click y arrastre para dibujar un rectangulo] ", fg_color="transparent", font=self.my_font, text_color="#ff0800")
         self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Seleccione Entrada y Salida [Boton ↑↓] ✘\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)] ", fg_color="transparent", font=self.my_font, text_color="#ff0800")
         self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="4. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="4. Seleccione el recuadro de referencia [Boton Conversion] ✘\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ", fg_color="transparent", font=self.my_font, text_color="#ff0800")
         self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
 
         self.texto_conversion = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
@@ -1645,7 +1680,7 @@ class Tab2(ctk.CTkFrame):
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
         self.texto5.grid(row=1, column=1, padx=(5, 0), pady=(5, 5), sticky="w")
 
-
+    
         self.debug_var = ctk.BooleanVar(value=False)
         self.debug_checkbox = ctk.CTkCheckBox(
             self.FrameTxt, 
@@ -1876,7 +1911,7 @@ class Tab2(ctk.CTkFrame):
         distance_px = math.sqrt((gv.conv_p2[0]-gv.conv_p1[0])**2 + (gv.conv_p2[1]-gv.conv_p1[1])**2)
         
         # La distancia real es siempre 10mm
-        MEDIDA_REAL_MM = 10.0
+        MEDIDA_REAL_MM = math.sqrt(10**2 + 10**2)
         
         # Calcular factor de conversión lineal (mm/px)
         factor_lineal = MEDIDA_REAL_MM / distance_px
