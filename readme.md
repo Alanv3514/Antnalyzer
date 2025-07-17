@@ -29,7 +29,7 @@ Luego de instalar Anaconda3 y haber reiniciado la pc:
 * Ejecutar pip install -r requeriments.txt
 * Utilizando su IDE de preferencia ejecute el archivo antnalyzer.py en el entorno python correspondiente
 
-## Para entornos de usuario final
+### Para entornos de usuario final
 
 Encontrarán la última versión en:
 https://github.com/Alanv3514/Antnalyzer/releases
