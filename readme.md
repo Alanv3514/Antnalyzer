@@ -13,7 +13,8 @@ Desarrollado en python 3.9.16.
 Deteccioón de carga realizada con la ayuda de YOLOv8. 
 Trackeo realizado con un algoritmo trigonometrico.
 
-## How to run
+## Ejecución del proyecto
+### Para entornos de desarrollo
 
 Actualmente se sube el codigo fuente del proyecto por lo que para correrlo 
 se necesitan instalar herramientas de desarrollo. 
@@ -28,8 +29,9 @@ Luego de instalar Anaconda3 y haber reiniciado la pc:
 * Ejecutar pip install -r requeriments.txt
 * Utilizando su IDE de preferencia ejecute el archivo antnalyzer.py en el entorno python correspondiente
 
-## Ejecutable
+## Para entornos de usuario final
 
+Encontrarán la última versión en:
 https://github.com/Alanv3514/Antnalyzer/releases
 
 ## Licencia
