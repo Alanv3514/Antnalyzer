@@ -1,3 +1,0 @@
-Cant Hojas|Mediana|Percentil 25| Percentil 75| Hora
-2|0.0|0.0|0.0|0.0|1.0
-1|0.0|0.0|0.0|1.0|2.0

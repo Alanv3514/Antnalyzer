@@ -1,4 +1,3 @@
 .spyproject
 output
-src/models_data/*
 src/modules/__pycache__/
