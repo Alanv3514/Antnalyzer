@@ -38,6 +38,7 @@ class VGlobals:
         self.point2 = None
         self.bb = False
         self.show_debug_window = False  # Variable para controlar ventana de debug
+        self.filtrado_estricto = False  # Variable para controlar tipo de filtrado
         
         # Estados de configuración
         self.area_seleccionada = False
@@ -55,7 +56,7 @@ gv=VGlobals()
 
 
 class Configuracion:    #Clase de configuracion
-    def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo, device):
+    def __init__(self, fecha, hora, fps, fpsdist, fpsapa, conf, cantapa, tiempo, device, factork):
         self.fecha = fecha
         self.hora = hora
         self.fps = fps
@@ -64,7 +65,8 @@ class Configuracion:    #Clase de configuracion
         self.conf = conf
         self.cantapa = cantapa
         self.tiempo = tiempo
-        self.device = device  
+        self.device = device
+        self.factork = factork  
 
     def getfecha(self):
         return self.fecha
@@ -95,6 +97,9 @@ class Configuracion:    #Clase de configuracion
     
     def getdevice(self):
         return self.device
+    
+    def getfactork(self):
+        return self.factork
     
     def __str__(self):
         return f"Config: fecha:{self.fecha}, hora:{self.hora}, FPS:{self.fps},FPSDist:{self.fpsdist}, FPSAp:{self.fpsapa}, Confianza:{self.conf}, Cantidad de apariciones: {self.cantapa}, Intervalo de Guardado: {self.tiempo}, Procesar con: {self.device}"
@@ -149,6 +154,10 @@ def iniciar(UI2):
     gv.frameactual = 0
     gv.frameaux = 0
     
+    # Inicializar variables de continuidad temporal para nueva sesión
+    gv.frameactual_total = 0
+    gv.garch = 0.0
+    
     # Inicializar variables para procesamiento
     gv.entrada_coord = None
     gv.salida_coord = None
@@ -179,13 +188,6 @@ def iniciar(UI2):
     UI2.cambiartexto(UI2.gettxt4(), "4. Seleccione el recuadro de referencia [Boton Conversion] ✘\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ")
     UI2.cambiarcolor(UI2.gettxt4(), "#ff0800")
 
-    # # Resetear textos de configuración
-    # UI2.cambiartexto(UI2.gettxt1(), "1. Seleccione Área de detección [clic y arrastre]")
-    # UI2.cambiartexto(UI2.gettxt2(), "2. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
-    # UI2.cambiartexto(UI2.gettxt3(), "3. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]")
-    
-    ## Mensajes iniciales actualizados
-    #UI2.cambiartexto(UI2.gettxt4(), "Configure los 3 parámetros")
     
     # Leer y mostrar el primer frame antes de poner en pausa
     success, img = gv.cap.read()
@@ -194,15 +196,15 @@ def iniciar(UI2):
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         gv.img = img_rgb.copy()
         
-        # Redimensionar la imagen para que se ajuste a la pantalla
-        height, width = img_rgb.shape[:2]
-        ratio = 640 / width
-        new_height = int(height * ratio)
-        img_resized = cv2.resize(img_rgb, (640, new_height), interpolation=cv2.INTER_AREA)
+        # Ajustar el widget al tamaño del video
+        UI2.ajustar_widget_a_video()
         
-        # Crear imagen para la interfaz
-        im = ImgPIL.fromarray(img_resized)
-        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(640, new_height))
+        # Usar el tamaño original del video (sin redimensionar)
+        height, width = img_rgb.shape[:2]
+        
+        # Crear imagen para la interfaz con tamaño original
+        im = ImgPIL.fromarray(img_rgb)
+        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(width, height))
         
         # Actualizar video en UI
         lblVideo = UI2.getlblVideo()
@@ -383,7 +385,7 @@ def habilitar_conversion(UI2):
     
     # Si ya estaba seleccionada, mantenemos el check
     if gv.conversion_seleccionada:
-        texto = UI2.gettxt3().strip("\n")[0]+" ✓\n [%.2f mm²/px²]" % gv.cte
+        texto = UI2.gettxt3().cget("text").strip("\n")[0]+" ✓\n [%.2f mm²/px²]" % gv.cte
         UI2.cambiartexto(UI2.gettxt3(), texto)
         UI2.cambiarcolor(UI2.gettxt1(),"#009929")
     
@@ -403,14 +405,26 @@ def eliminar_hojas(hojas, frame_actual):
             # Agregar la hoja al array de hojas perdidas
             if hoja.getcantapariciones()>gv.configuracion.getcantapa():
                 gv.valid_ID += 1 # Aumentamos el ID valido
-                if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
-                    if (primer_aparicion.gety() - ultima_aparicion.gety()) > 30:
+                
+                # Calcular distancia entre primera y última aparición
+                distancia_recorrida = math.hypot(
+                    ultima_aparicion.getx() - primer_aparicion.getx(),
+                    ultima_aparicion.gety() - primer_aparicion.gety()
+                )
+
+                # Solo procesar la hoja si la distancia recorrida es mayor a 5 píxeles, esto permite descartar hojas que esten estaticas.
+                if distancia_recorrida > 5:
+                    if primer_aparicion.gety() > ultima_aparicion.gety() and bandera_superada==False:
                         hoja.valid_id = gv.valid_ID
                         gv.hojas_final.append(hoja)
-                        gv.hojas_final = filtrar_duplicados(gv.hojas_final)
-                elif bandera_superada==False:
-                    hoja.valid_id = gv.valid_ID
-                    gv.hojas_final_sale.append(hoja)
+                        if gv.filtrado_estricto:
+                            gv.hojas_final = filtrar_duplicados_estricto(gv.hojas_final)
+                        else:
+                            gv.hojas_final = filtrar_duplicados(gv.hojas_final)
+                    elif bandera_superada==False:
+                        hoja.valid_id = gv.valid_ID
+                        gv.hojas_final_sale.append(hoja)
+                # Si la distancia es <= 5 píxeles, se descarta la hoja (no se agrega a ninguna lista)
             # Eliminar la hoja del array hojas
             del hojas[i]
     return hojas
@@ -585,6 +599,43 @@ def filtrar_duplicados(hojas):
     
     # Filtrar las hojas manteniendo solo las no duplicadas
     hojas_filtradas = [hoja for hoja in hojas_ordenadas if hoja.getID() not in hojas_a_descartar]
+    
+    return hojas_filtradas
+
+def filtrar_duplicados_estricto(hojas):
+    """
+    Filtra las hojas duplicadas incluyendo aquellas que tienen patrones de duplicación
+    """
+    hojas_filtradas = []
+    hojas_a_descartar = set()
+
+    for i, hoja1 in enumerate(hojas):
+        if hoja1.getID() in hojas_a_descartar:
+            continue
+
+        duplicados_encontrados = 0  # Contador de duplicados para esta hoja
+
+        for j, hoja2 in enumerate(hojas[i+1:], i+1):
+            ult_apar1 = hoja1.apariciones[-1]
+            ult_apar2 = hoja2.apariciones[-1]
+
+            # Verificamos frames cercanos
+            if abs(ult_apar1.getframe() - ult_apar2.getframe()) <= 5:
+                dist = math.hypot(ult_apar1.getx() - ult_apar2.getx(), 
+                                ult_apar1.gety() - ult_apar2.gety())
+                if dist < 5:
+                    duplicados_encontrados += 1
+                    hojas_a_descartar.add(hoja1.getID())
+                    hojas_a_descartar.add(hoja2.getID())
+
+        # Si la hoja tiene más de un duplicado, la marcamos para eliminar
+        if duplicados_encontrados > 1:
+            hojas_a_descartar.add(hoja1.getID())
+
+    # Filtramos las hojas
+    hojas_filtradas = [hoja for hoja in hojas if hoja.getID() not in hojas_a_descartar]
+
+
     
     return hojas_filtradas
 
@@ -777,8 +828,9 @@ def visualizar(UI2):
                     traceback.print_exc()
 
             # Cálculos de tiempo
-            sec = gv.frameactual / gv.configuracion.getfps()
-            s = datetime.timedelta(seconds=int(sec))
+            # Tiempo total acumulado (incluyendo videos anteriores + tiempo actual)
+            sec_total = (gv.frameactual_total + gv.frameactual) / gv.configuracion.getfps()
+            s = datetime.timedelta(seconds=int(sec_total))
             hora = gv.configuracion.gethora() + s
             
             # Actualizar UI de manera eficiente
@@ -786,7 +838,7 @@ def visualizar(UI2):
             UI2.cambiartexto(UI2.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
 
             # Manejo de guardado automático
-            gv.garch = sec / 60
+            gv.garch = sec_total / 60
             tiempo_guardado = float(gv.configuracion.gettiempo())
             
             # Calcular si toca guardar datos en archivos, con una pequeña tolerancia para redondeo
@@ -824,34 +876,12 @@ def visualizar(UI2):
             # Obtener referencia al widget de video
             lblVideo = UI2.getlblVideo()
             
-            # Obtener dimensiones del widget de visualización
-            display_width = lblVideo.winfo_width()
-            display_height = lblVideo.winfo_height()
-            
-            if display_width == 1 or display_height == 1:  # Widget no inicializado completamente
-                display_width = 640
-                display_height = 480
-            
-            # Calcular ratio de aspecto del frame original
+            # Usar tamaño original del video
             height, width = img_rgb.shape[:2]
-            aspect_ratio = width / height
             
-            # Calcular dimensiones manteniendo el ratio de aspecto
-            if display_width / display_height > aspect_ratio:
-                # El ancho es el factor limitante
-                new_width = int(display_height * aspect_ratio)
-                new_height = display_height
-            else:
-                # El alto es el factor limitante
-                new_width = display_width
-                new_height = int(display_width / aspect_ratio)
-            
-            # Redimensionar la imagen manteniendo el ratio de aspecto
-            img_resized = cv2.resize(img_rgb, (new_width, new_height), interpolation=cv2.INTER_AREA)
-            
-            # Crear imagen para la interfaz
-            im = ImgPIL.fromarray(img_resized)
-            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(new_width, new_height))
+            # Crear imagen para la interfaz con tamaño original
+            im = ImgPIL.fromarray(img_rgb)
+            display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(width, height))
             
             # Actualizar video en UI
             lblVideo.configure(image=display_img)
@@ -914,6 +944,17 @@ def handle_end_of_video(UI2, gv):
             next_index = current_index + 1
             gv.filename = gv.filenames[next_index]
             
+            # Mantener continuidad temporal: acumular frames del video anterior
+            gv.frameactual_total += gv.frameactual
+            
+            # Actualizar garch con el tiempo total acumulado
+            sec_total = gv.frameactual_total / gv.configuracion.getfps()
+            gv.garch = sec_total / 60
+            
+            # Resetear frameactual para el nuevo video (posición dentro del video actual)
+            gv.frameactual = 0
+            gv.frameaux = 0
+            
             try:
                 gv.cap = cv2.VideoCapture(gv.filename)
                 if not gv.cap.isOpened():
@@ -921,6 +962,7 @@ def handle_end_of_video(UI2, gv):
                     # Intentar con el siguiente si este falla
                     handle_end_of_video(UI2, gv)
                     return
+                
                 # Continuar con la visualización
                 visualizar(UI2)
             except Exception as e:
@@ -980,6 +1022,8 @@ gv.font=cv2.FONT_HERSHEY_SIMPLEX
 gv.total_hojas=0
 gv.frameactual=0
 gv.frameaux=0
+gv.frameactual_total=0  # Frames totales acumulados de todos los videos
+gv.garch=0.0  # Tiempo en minutos desde el inicio de toda la sesión
 gv.cte=0
 gv.bb=False
 kf=[]
@@ -1063,6 +1107,7 @@ class App(ctk.CTk):
                     loaded = StateManager.load_application_state(gv, filepath)
                     
                     if loaded:
+                        print(gv.configuracion.gethora())
                         # Si se cargó el estado correctamente, configurar la interfaz
                         self.after(500, self.restore_ui_state)
                         return True
@@ -1186,12 +1231,22 @@ class App(ctk.CTk):
                                 print(f"No se pudo abrir el video: {gv.filename}")
                                 return
                                 
+                            # Al restaurar, frameactual ya contiene la posición correcta dentro del video actual
+                            # frameactual_total contiene el tiempo total acumulado de sesiones anteriores
+                            total_frames_video = int(gv.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                            
+                            # Verificar que frameactual esté dentro del rango válido del video actual
+                            if gv.frameactual >= total_frames_video:
+                                gv.frameactual = max(0, total_frames_video - 1)
+                            
+                            # Calcular tiempo total para mostrar en logs
+                            tiempo_total_min = (gv.frameactual_total + gv.frameactual) / gv.configuracion.getfps() / 60
+                            
                             # Posicionar en el frame guardado
                             if gv.frameactual > 0:
                                 # Asegurarse de que no estamos intentando ir más allá del final del video
-                                total_frames = int(gv.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                                if gv.frameactual >= total_frames:
-                                    gv.frameactual = max(0, total_frames - 1)
+                                if gv.frameactual >= total_frames_video:
+                                    gv.frameactual = max(0, total_frames_video - 1)
                                 
                                 gv.cap.set(cv2.CAP_PROP_POS_FRAMES, gv.frameactual)
                                 
@@ -1232,22 +1287,31 @@ class App(ctk.CTk):
         
         # Actualizar textos de configuración según el estado
         if gv.area_seleccionada:
-            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área de detección [Boton Área de Deteccion] ✓")
-            tab2_instance.cambiarcolor(tab2_instance.gettxt1(),"#009929")
+            tab2_instance.cambiartexto(tab2_instance.gettxt1(), "1. Área de deteccion [Boton Área de Deteccion] ✓")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt1(), "#009929")
             tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
 
 
         if gv.entrada_salida_seleccionada:
-            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. Entrada y Salida [Boton ↑↓] ✓")
-            tab2_instance.cambiarcolor(tab2_instance.gettxt2(),"#009929")
+            tab2_instance.cambiartexto(tab2_instance.gettxt2(), "2. Seleccione Entrada y Salida [Boton ↑↓] ✓\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt2(),  "#009929")
             tab2_instance.getBaseBlanca().configure(fg_color="#4E8F69")
-            
-        
+
         if gv.conversion_seleccionada:
-            texto = f"4. Conversion ✓ [{gv.cte:.2f} mm²/px²]" if hasattr(gv, 'cte') else "4. Conversion ✓"
-            tab2_instance.cambiartexto(tab2_instance.gettxt3(), texto)
+            tab2_instance.cambiartexto(tab2_instance.gettxt3(), "3. Seleccione el recuadro de referencia✓\n[dos clics, uno en cada esquina diagonales opuestas del cuadrado de referencia] ")
             tab2_instance.cambiarcolor(tab2_instance.gettxt3(),"#009929")
+
+       
+        if gv.conversion_seleccionada:
+            tab2_instance.cambiartexto(tab2_instance.gettxt4(), "Configuracion Completa - Puede Presionar Play ")
+            tab2_instance.cambiarcolor(tab2_instance.gettxt4(), "#ff0800")
             tab2_instance.getBotonConv().configure(fg_color="#4E8F69")
+            
+            # Actualizar también el nuevo widget de conversión
+            if hasattr(gv, 'cte'):
+                texto_conversion = f"Factor de Conversión: {gv.cte:.2f} mm²/px²"
+                tab2_instance.cambiartexto(tab2_instance.getTextoConversion(), texto_conversion)
+                tab2_instance.cambiarcolor(tab2_instance.getTextoConversion(), "#4E8F69")
         
         # Si todas las configuraciones están completas, habilitar el botón de pausa
         if gv.area_seleccionada and gv.entrada_salida_seleccionada and gv.conversion_seleccionada:
@@ -1257,6 +1321,11 @@ class App(ctk.CTk):
         # Actualizar contador de hojas
         if hasattr(gv, 'total_hojas'):
             tab2_instance.cambiartexto(tab2_instance.gettxt4(), f"Hojas entrantes: {gv.total_hojas + len(gv.hojas_final)}")
+        
+        # Actualizar selector de filtrado
+        if hasattr(gv, 'filtrado_estricto'):
+            valor_filtrado = "Estricto" if gv.filtrado_estricto else "Normal"
+            tab2_instance.filtrado_var.set(valor_filtrado)
     
     def save_state(self):
         """Guarda el estado actual de la aplicación"""
@@ -1316,6 +1385,9 @@ class Tab1(ctk.CTkFrame):
         super().__init__(master)
         # Configuración de los widgets de la pestaña 1
         self.parent=parent
+        
+        # Configurar el grid para permitir espacio para los logos
+        self.grid_columnconfigure(4, weight=1)  # Columna para los logos
         imagenQ = ctk.CTkImage(light_image=ImgPIL.open('assets/interrogatorio_2.png'),
                                      dark_image=ImgPIL.open('assets/interrogatorio_2.png'),
                                      size=(16,16))
@@ -1328,8 +1400,9 @@ class Tab1(ctk.CTkFrame):
         self.confstring = ctk.DoubleVar(value=0.6)
         self.cantstring = ctk.IntVar(value=10)
         self.tiemstring = ctk.DoubleVar(value=10)
+        self.factork_string = ctk.DoubleVar(value=1.0)
 
-        devicet = ctk.CTkLabel(self, text="Procesar con:").grid(row=8, column=0, sticky="w")
+# Configuración de dispositivos
         self.devices = ['cpu']  # Siempre incluir CPU
         if torch.cuda.is_available():
             for i in range(torch.cuda.device_count()):
@@ -1337,14 +1410,6 @@ class Tab1(ctk.CTkFrame):
         
         # Variable para almacenar el dispositivo seleccionado
         self.device_var = ctk.StringVar(value=self.devices[0])
-        
-        # Menú desplegable para dispositivos
-        self.device_menu = ctk.CTkOptionMenu(self, values=self.devices, variable=self.device_var, width=150,fg_color=("#5E7B6B", "#5E7B6B"), dropdown_fg_color=("#5E7B6B", "#5E7B6B"), dropdown_hover_color=("#397F5A", "#397F5A"), dropdown_text_color=("white", "white"))
-        self.device_menu.grid(row=8, column=1, sticky="w")
-
-        deviceq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
-        deviceq.grid(row=8, column=2, sticky="w", padx=5)
-        self.crear_toolTip(deviceq, 'Selecciona el dispositivo a utilizar para realizar el procesamiento del modelo.\nCPU: Procesamiento en CPU\nCUDA: Procesamiento en GPU')
 
         # Funciones de validación
         self.vcmd_int = (self.register(lambda P: self.callback('int', P)), '%P')
@@ -1410,30 +1475,81 @@ class Tab1(ctk.CTkFrame):
         tiemq.grid(row=7, column=2, sticky="w", padx=5)
         self.crear_toolTip(tiemq, 'Intervalo de tiempo en minutos en el que se guardaron los datos procesados')
 
-        select = ctk.CTkLabel(self, text="Carpeta de guardado").grid(row=9, column=0, sticky="w")
+        factorkt = ctk.CTkLabel(self, text="Factor de Seguimiento (k):").grid(row=8, column=0, sticky="w")
+        factork = ctk.CTkEntry(self, textvariable=self.factork_string, width=150, validate="key", validatecommand=self.vcmd_float)
+        factork.grid(row=8, column=1, sticky="w")
+        factorkq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        factorkq.grid(row=8, column=2, sticky="w", padx=5)
+        self.crear_toolTip(factorkq, 'Factor de sensibilidad para el seguimiento de hojas.\nValores menores (0.5-1.0) = seguimiento más estricto\nValores mayores (1.0-3.0) = seguimiento más permisivo')
+
+        devicet = ctk.CTkLabel(self, text="Procesar con:").grid(row=9, column=0, sticky="w")
+        self.device_menu = ctk.CTkOptionMenu(self, values=self.devices, variable=self.device_var, width=150,fg_color=("#5E7B6B", "#5E7B6B"), dropdown_fg_color=("#5E7B6B", "#5E7B6B"), dropdown_hover_color=("#397F5A", "#397F5A"), dropdown_text_color=("white", "white"))
+        self.device_menu.grid(row=9, column=1, sticky="w")
+        deviceq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
+        deviceq.grid(row=9, column=2, sticky="w", padx=5)
+        self.crear_toolTip(deviceq, 'Selecciona el dispositivo a utilizar para realizar el procesamiento del modelo.\nCPU: Procesamiento en CPU\nCUDA: Procesamiento en GPU')
+
+        select = ctk.CTkLabel(self, text="Carpeta de guardado").grid(row=10, column=0, sticky="w")
         boton_seleccionar_carpeta = ctk.CTkButton(self, text="Seleccionar Carpeta", command=lambda: seleccionar_carpeta(self))
-        boton_seleccionar_carpeta.grid(row=9, column=1, sticky="w")
+        boton_seleccionar_carpeta.grid(row=10, column=1, sticky="w")
         selecq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
-        selecq.grid(row=9, column=2, sticky="w", padx=5)
+        selecq.grid(row=10, column=2, sticky="w", padx=5)
         self.crear_toolTip(selecq, 'Carpeta de guardado de los datos de procesamiento')
 
         # Botón para seleccionar modelo
-        modelo = ctk.CTkLabel(self, text="Modelo YOLO").grid(row=10, column=0, sticky="w")
+        modelo = ctk.CTkLabel(self, text="Modelo YOLO").grid(row=11, column=0, sticky="w")
         boton_seleccionar_modelo = ctk.CTkButton(self, text="Seleccionar Modelo", command=self.seleccionar_modelo)
-        boton_seleccionar_modelo.grid(row=10, column=1, sticky="w")
+        boton_seleccionar_modelo.grid(row=11, column=1, sticky="w")
         modeloq = ctk.CTkButton(self, fg_color="transparent", image=imagenQ, text="", height=16, width=16)
-        modeloq.grid(row=10, column=2, sticky="w", padx=5)
+        modeloq.grid(row=11, column=2, sticky="w", padx=5)
         self.crear_toolTip(modeloq, 'Seleccionar modelo YOLO para la detección de hojas')
         
         # Etiqueta para mostrar el modelo seleccionado
         self.modelo_label = ctk.CTkLabel(self, text="")
-        self.modelo_label.grid(row=10, column=3, columnspan=2, sticky="w", padx=5)
+        self.modelo_label.grid(row=11, column=3, columnspan=2, sticky="w", padx=5)
 
         self.botonok = ctk.CTkButton(self, text="Confirmar", command=self.guardar)
-        self.botonok.grid(row=11, column=0, sticky=W)
+        self.botonok.grid(row=12, column=0, sticky=W)
         self.botonok.configure(state="disabled")
 
+        # Frame para los logos a la derecha
+        self.logos_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.logos_frame.grid(row=0, column=4, rowspan=13, padx=20, pady=10, sticky="nsew")
+        
+        # Cargar y mostrar los logos
+        self.crear_logos()
+
         self.pack(expand=True, fill='both')
+
+    def crear_logos(self):
+        try:
+            # Logo UTN
+            logo_utn = ctk.CTkImage(
+                light_image=ImgPIL.open('assets/utn2.png'),
+                dark_image=ImgPIL.open('assets/utn2.png'),
+                size=(300, 120)
+            )
+            self.label_utn = ctk.CTkLabel(self.logos_frame, image=logo_utn, text="")
+            self.label_utn.grid(row=0, column=0, pady=(0, 0), sticky="n")
+
+            
+            # Logo Eco Hormigas
+            logo_eco = ctk.CTkImage(
+                light_image=ImgPIL.open('assets/eco_hormigas.png'),
+                dark_image=ImgPIL.open('assets/eco_hormigas.png'),
+                size=(489, 400)
+            )
+            self.label_eco = ctk.CTkLabel(self.logos_frame, image=logo_eco, text="")
+            self.label_eco.grid(row=1, column=0, pady=(0, 0), sticky="w")
+            
+        except Exception as e:
+            print(f"Error al cargar los logos: {str(e)}")
+            # Mostrar labels de texto si no se pueden cargar las imágenes
+            self.label_utn_text = ctk.CTkLabel(self.logos_frame, text="Logo UTN", font=ctk.CTkFont(size=16))
+            self.label_utn_text.grid(row=0, column=0, pady=(0, 20), sticky="w")
+            
+            self.label_eco_text = ctk.CTkLabel(self.logos_frame, text="Logo Eco Hormigas", font=ctk.CTkFont(size=16))
+            self.label_eco_text.grid(row=1, column=0, pady=(20, 0), sticky="w")
 
     def cambiar_estado(self):
         self.botonok.configure(state="normal")
@@ -1445,14 +1561,14 @@ class Tab1(ctk.CTkFrame):
             # Obtiene la posición del widget en la pantalla
         xTT = widget.winfo_rootx() + widget.winfo_width() + 5  # Desplazamiento hacia la derecha
         yTT = widget.winfo_rooty()
-        toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.3, bg_color="#000000", width=150)
+        toolTip = CTkToolTip(widget, delay=0.3, message=texto, alpha=0.7, bg_color="#000000", width=150)
         toolTip.geometry(f"+{xTT}+{yTT}")
         
     def guardar(self):      #Guardamos en el objeto configuracion los valores ingresados en las entradas
             global gv
             h, m = self.horastring.get().split(':')
             d = datetime.timedelta(hours=int(h), minutes=int(m))
-            if self.fpstring.get() == 0 or self.fpsdisstring.get()== 0 or self.confstring.get()==0 or self.confstring.get()>1 or self.cantstring.get()==0 or self.tiemstring.get()==0:
+            if self.fpstring.get() == 0 or self.fpsdisstring.get()== 0 or self.confstring.get()==0 or self.confstring.get()>1 or self.cantstring.get()==0 or self.tiemstring.get()==0 or self.factork_string.get()<=0:
                 self.msgBox()
                 return 0
             
@@ -1467,7 +1583,8 @@ class Tab1(ctk.CTkFrame):
                 self.confstring.get(),
                 self.cantstring.get(),
                 self.tiemstring.get(),
-                selected_device
+                selected_device,
+                self.factork_string.get()
             )
             print(gv.configuracion)
             self.parent.habilitar_tabs()
@@ -1519,12 +1636,13 @@ class Tab2(ctk.CTkFrame):
 
         # Configuración de los widgets de la pestaña 2
         self.lblVideo = ctk.CTkLabel(self.FrameVideo, text="")
+        # Tamaño inicial, se ajustará automáticamente al video
         self.lblVideo.configure(width=640, height=480)
         self.lblVideo.grid(row=0, column=0,sticky="")
         self.lblVideo.bind("<Button-1>", self.on_click)
 
         self.progress_bar = ctk.CTkProgressBar(self.FrameVideo, orientation=HORIZONTAL, width=640, mode='determinate')
-        self.progress_bar.grid(row=1, column=0, padx=0, pady=(5, 5), sticky="")
+        self.progress_bar.grid(row=1, column=0, padx=(0, 10), pady=(5, 5), sticky="w")
         self.progress_bar.set(0)
 
         self.inicio = ctk.CTkButton(self.FrameBtn, text="Iniciar", width=96.6, command=lambda: iniciar(self))
@@ -1547,23 +1665,25 @@ class Tab2(ctk.CTkFrame):
         salir = ctk.CTkButton(self.FrameBtn, hover=True, text="Salir", width=96.6, command=quit_1)
         salir.grid(row=0, column=5, padx=5, pady=(10, 10), sticky="ew")
         
-        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Seleccione video para comenzar [Boton Iniciar]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto1 = ctk.CTkLabel(self.FrameTxt, text="1. Seleccione video para comenzar [Boton Iniciar] ✓", fg_color="transparent", font=self.my_font, text_color="#009929")
         self.texto1.grid(row=0, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Área de detección [Boton Área de Deteccion] \n[Click y arrastrar para dibujar un rectangulo]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto2 = ctk.CTkLabel(self.FrameTxt, text="2. Seleccione Área de detección [Boton Área de Deteccion] ◍\n[Click y arrastre para dibujar un rectangulo] ", fg_color="transparent", font=self.my_font, text_color="#ff0800")
         self.texto2.grid(row=1, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Entrada y Salida\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto3 = ctk.CTkLabel(self.FrameTxt, text="3. Seleccione Entrada y Salida [Boton ↑↓] ✘\n[1er click en entrada. 2do click en salida (boca de ingreso al nido)] ", fg_color="transparent", font=self.my_font, text_color="#ff0800")
         self.texto3.grid(row=2, column=0, padx=5, pady=(10, 10), sticky="ew")
 
-        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="4. Factor de conversión\n[dos clics, uno en cada esquina opuestas del cuadrado de conversion]", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto4 = ctk.CTkLabel(self.FrameTxt, text="4. Seleccione el recuadro de referencia [Boton Conversion] ✘\n[dos clics, uno en cada esquina opuestas del cuadrado de referencia] ", fg_color="transparent", font=self.my_font, text_color="#ff0800")
         self.texto4.grid(row=3, column=0, padx=5, pady=(10, 10), sticky="ew")
 
+        self.texto_conversion = ctk.CTkLabel(self.FrameTxt, text="", fg_color="transparent", font=self.my_font, text_color="#abcfba")
+        self.texto_conversion.grid(row=4, column=0, padx=5, pady=(10, 10), sticky="ew")
 
         self.texto5 = ctk.CTkLabel(self.FrameVideo, text="", fg_color="transparent", font=self.my_font2, text_color="#abcfba")
-        self.texto5.grid(row=1, column=1, padx=5, pady=(10, 10), sticky="ew")
+        self.texto5.grid(row=1, column=1, padx=(5, 0), pady=(5, 5), sticky="w")
 
-
+    
         self.debug_var = ctk.BooleanVar(value=False)
         self.debug_checkbox = ctk.CTkCheckBox(
             self.FrameTxt, 
@@ -1573,11 +1693,28 @@ class Tab2(ctk.CTkFrame):
             font=self.my_font2,
             fg_color="#4E8F69"
         )
-        self.debug_checkbox.grid(row=5, column=0, padx=5, pady=(10, 10), sticky="w")
+        self.debug_checkbox.grid(row=7, column=0, padx=5, pady=(10, 10), sticky="w")
+
+        # Menú selector para tipo de filtrado
+        filtrado_label = ctk.CTkLabel(self.FrameTxt, text="Tipo de Filtrado:", font=self.my_font2)
+        filtrado_label.grid(row=5, column=0, padx=5, pady=(5, 0), sticky="w")
+        
+        self.filtrado_var = ctk.StringVar(value="Normal")
+        self.filtrado_menu = ctk.CTkOptionMenu(
+            self.FrameTxt,
+            values=["Normal", "Estricto"],
+            variable=self.filtrado_var,
+            command=self.cambiar_filtrado,
+            width=150,
+            font=self.my_font2,
+            fg_color="#4E8F69",
+            dropdown_fg_color="#4E8F69"
+        )
+        self.filtrado_menu.grid(row=6, column=0, padx=5, pady=(0, 10), sticky="w")
 
         # Crear un frame para la ventana de debug (inicialmente oculto)
         self.debug_frame = ctk.CTkFrame(self.FrameTxt)
-        self.debug_frame.grid(row=6, column=0, padx=5, pady=(10, 10), sticky="nsew")
+        self.debug_frame.grid(row=8, column=0, padx=5, pady=(10, 10), sticky="nsew")
         self.debug_frame.grid_remove()  # Ocultar inicialmente
 
         # Label para mostrar las detecciones
@@ -1603,6 +1740,9 @@ class Tab2(ctk.CTkFrame):
     
     def gettxt5(self):
         return self.texto5
+
+    def getTextoConversion(self):
+        return self.texto_conversion
 
     def cambiartexto(self, widget, texto):
         widget.configure(text=texto)
@@ -1668,16 +1808,15 @@ class Tab2(ctk.CTkFrame):
         # Crea una copia del frame pausado
         frame_copy = gv.img.copy()
         
-        # Convertir coordenadas originales a coordenadas de pantalla para dibujar
-        display_point1 = self.original_to_display_coords(gv.point1[0], gv.point1[1])
-        display_point2 = self.original_to_display_coords(gv.point2[0], gv.point2[1])
-        
         # Dibujar el rectángulo en la copia del frame usando coordenadas originales
         cv2.rectangle(frame_copy, gv.point1, gv.point2, (0, 255, 0), 2)
 
-        frame_copy = ImgPIL.fromarray(frame_copy)
-        # Actualizar la imagen en la interfaz gráfica
-        frame_tk = ctk.CTkImage(light_image=frame_copy, dark_image=frame_copy, size=(640,480))
+        # Usar tamaño original del video
+        height, width = frame_copy.shape[:2]
+        
+        # Crear imagen para la interfaz con tamaño original
+        frame_copy_pil = ImgPIL.fromarray(frame_copy)
+        frame_tk = ctk.CTkImage(light_image=frame_copy_pil, dark_image=frame_copy_pil, size=(width, height))
         self.lblVideo.configure(image=frame_tk)
         self.lblVideo.image = frame_tk
 
@@ -1757,7 +1896,6 @@ class Tab2(ctk.CTkFrame):
         
 
         self.getBaseBlanca().configure(fg_color="#4E8F69")
-        self.get().configure(fg_color="#4E8F69")
         # Actualizar la visualización con los puntos
         self._actualizar_display_con_dibujos()
         
@@ -1776,7 +1914,7 @@ class Tab2(ctk.CTkFrame):
         distance_px = math.sqrt((gv.conv_p2[0]-gv.conv_p1[0])**2 + (gv.conv_p2[1]-gv.conv_p1[1])**2)
         
         # La distancia real es siempre 10mm
-        MEDIDA_REAL_MM = 10.0
+        MEDIDA_REAL_MM = math.sqrt(10**2 + 10**2)
         
         # Calcular factor de conversión lineal (mm/px)
         factor_lineal = MEDIDA_REAL_MM / distance_px
@@ -1788,6 +1926,11 @@ class Tab2(ctk.CTkFrame):
         
         self.cambiartexto(self.texto3, texto)
         self.boton_conv.configure(fg_color="#4E8F69")
+        
+        # Actualizar el nuevo widget de conversión con el valor
+        texto_conversion = "Factor de Conversión: %.2f mm²/px²" % gv.cte
+        self.cambiartexto(self.getTextoConversion(), texto_conversion)
+        self.cambiarcolor(self.getTextoConversion(), "#4E8F69")
         
         # Indicar que la conversión ha sido seleccionada
         gv.conversion_seleccionada = True
@@ -1819,6 +1962,19 @@ class Tab2(ctk.CTkFrame):
         else:
             self.pausa.configure(state="disabled", fg_color="#2B2B2B")
 
+    def ajustar_widget_a_video(self):
+        """Ajusta el tamaño del widget lblVideo al tamaño del video original"""
+        if hasattr(gv, 'img') and gv.img is not None:
+            height, width = gv.img.shape[:2]
+            # Ajustar el widget al tamaño del video
+            self.lblVideo.configure(width=width, height=height)
+            # También ajustar la barra de progreso al ancho del video
+            self.progress_bar.configure(width=width)
+    
+    def cambiar_filtrado(self, valor):
+        global gv
+        gv.filtrado_estricto = (valor == "Estricto")
+        
     def toggle_debug_window(self):
         global gv
         gv.show_debug_window = self.debug_var.get()
@@ -1832,60 +1988,15 @@ class Tab2(ctk.CTkFrame):
             # Ocultar la ventana de debug
             self.debug_frame.grid_remove()
 
-    def get_display_scale(self):
-        """Calcula el factor de escala entre el frame original y el frame mostrado"""
-        if not hasattr(gv, 'img') or gv.img is None:
-            return 1.0, 1.0, 0, 0
-
-        # Obtener dimensiones del frame original
-        orig_height, orig_width = gv.img.shape[:2]
-        
-        # Obtener dimensiones del widget de visualización
-        display_width = self.lblVideo.winfo_width()
-        display_height = self.lblVideo.winfo_height()
-        
-        # Calcular ratios de escala
-        width_ratio = display_width / orig_width
-        height_ratio = display_height / orig_height
-        
-        # Calcular offsets para centrado
-        scaled_width = int(orig_width * width_ratio)
-        scaled_height = int(orig_height * height_ratio)
-        
-        x_offset = (display_width - scaled_width) // 2
-        y_offset = (display_height - scaled_height) // 2
-        
-        return width_ratio, height_ratio, x_offset, y_offset
-
     def display_to_original_coords(self, display_x, display_y):
         """Convierte coordenadas de la pantalla a coordenadas del frame original"""
-        width_ratio, height_ratio, x_offset, y_offset = self.get_display_scale()
-        
-        # Ajustar por offset
-        adjusted_x = display_x - x_offset
-        adjusted_y = display_y - y_offset
-        
-        # Convertir a coordenadas originales
-        original_x = int(adjusted_x / width_ratio)
-        original_y = int(adjusted_y / height_ratio)
-        
-        # Asegurar que las coordenadas estén dentro de los límites del frame original
-        if hasattr(gv, 'img'):
-            height, width = gv.img.shape[:2]
-            original_x = max(0, min(original_x, width - 1))
-            original_y = max(0, min(original_y, height - 1))
-        
-        return original_x, original_y
+        # Como ahora mostramos a tamaño original, las coordenadas son 1:1
+        return display_x, display_y
 
     def original_to_display_coords(self, original_x, original_y):
         """Convierte coordenadas del frame original a coordenadas de pantalla"""
-        width_ratio, height_ratio, x_offset, y_offset = self.get_display_scale()
-        
-        # Convertir a coordenadas de pantalla
-        display_x = int(original_x * width_ratio) + x_offset
-        display_y = int(original_y * height_ratio) + y_offset
-        
-        return display_x, display_y
+        # Como ahora mostramos a tamaño original, las coordenadas son 1:1
+        return original_x, original_y
 
     def _actualizar_display_con_dibujos(self):
         """Actualiza la visualización con todos los elementos de configuración"""
@@ -1910,32 +2021,12 @@ class Tab2(ctk.CTkFrame):
         if gv.conversion_seleccionada and gv.conv_p1 and gv.conv_p2:
             cv2.rectangle(frame_copy, gv.conv_p1, gv.conv_p2, (0, 0, 255), 1)
         
-        # Obtener dimensiones del widget
-        display_width = self.lblVideo.winfo_width()
-        display_height = self.lblVideo.winfo_height()
-        
-        if display_width == 1 or display_height == 1:
-            display_width = 640
-            display_height = 480
-        
-        # Calcular ratio de aspecto
+        # Usar tamaño original del video
         height, width = frame_copy.shape[:2]
-        aspect_ratio = width / height
         
-        # Calcular dimensiones manteniendo el ratio de aspecto
-        if display_width / display_height > aspect_ratio:
-            new_width = int(display_height * aspect_ratio)
-            new_height = display_height
-        else:
-            new_width = display_width
-            new_height = int(display_width / aspect_ratio)
-        
-        # Redimensionar la imagen
-        img_resized = cv2.resize(frame_copy, (new_width, new_height), interpolation=cv2.INTER_AREA)
-        
-        # Actualizar la imagen en la interfaz
-        im = ImgPIL.fromarray(img_resized)
-        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(new_width, new_height))
+        # Actualizar la imagen en la interfaz con tamaño original
+        im = ImgPIL.fromarray(frame_copy)
+        display_img = ctk.CTkImage(light_image=im, dark_image=im, size=(width, height))
         self.lblVideo.configure(image=display_img)
         self.lblVideo.image = display_img
 

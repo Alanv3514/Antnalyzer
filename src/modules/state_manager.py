@@ -54,6 +54,10 @@ class StateManager:
                 'valid_ID': gv.valid_ID if hasattr(gv, 'valid_ID') else 0,
                 'total_hojas': gv.total_hojas if hasattr(gv, 'total_hojas') else 0,
                 
+                # Variables de tiempo para continuidad entre videos
+                'garch': gv.garch if hasattr(gv, 'garch') else 0.0,
+                'frameactual_total': gv.frameactual_total if hasattr(gv, 'frameactual_total') else 0,
+                
                 # Carpeta de guardado
                 'carpeta_seleccionada': gv.carpeta_seleccionada if hasattr(gv, 'carpeta_seleccionada') else None,
                 
@@ -137,6 +141,10 @@ class StateManager:
             gv.ID = state_dict.get('ID', -1)
             gv.valid_ID = state_dict.get('valid_ID', 0)
             gv.total_hojas = state_dict.get('total_hojas', 0)
+            
+            # Variables de tiempo para continuidad entre videos
+            gv.garch = state_dict.get('garch', 0.0)
+            gv.frameactual_total = state_dict.get('frameactual_total', 0)
             
             # Carpeta de guardado
             if state_dict.get('carpeta_seleccionada'):
