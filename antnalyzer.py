@@ -634,6 +634,8 @@ def filtrar_duplicados_estricto(hojas):
 
     # Filtramos las hojas
     hojas_filtradas = [hoja for hoja in hojas if hoja.getID() not in hojas_a_descartar]
+
+
     
     return hojas_filtradas
 
@@ -1912,11 +1914,7 @@ class Tab2(ctk.CTkFrame):
         distance_px = math.sqrt((gv.conv_p2[0]-gv.conv_p1[0])**2 + (gv.conv_p2[1]-gv.conv_p1[1])**2)
         
         # La distancia real es siempre 10mm
-<<<<<<< HEAD
         MEDIDA_REAL_MM = math.sqrt(10**2 + 10**2)
-=======
-        MEDIDA_REAL_MM = math.sqrt(10^2+10^2)
->>>>>>> 0f8f835648147ad3eff4e5c496e1cde21ed95ee6
         
         # Calcular factor de conversión lineal (mm/px)
         factor_lineal = MEDIDA_REAL_MM / distance_px
