@@ -5,8 +5,12 @@ Tecnologica Nacional Facultad Regional Paraná
 Titulo de Tesis: "Utilización de Inteligencia Artificial para la estimación de la actividad forrajera de las hormigas cortadoras de hojas"
 
 ### Autores
-- Vinzon Eric Alan
-- Quiroga Agustin
+* [Vinzon, Eric Alan](https://github.com/Alanv3514)
+* [Quiroga, Agustin](https://github.com/quiro1297)
+### Director de tesis
+* Maggiolini, Lucas
+### Co-Director de tesis
+* [Sabattini, Julián Alberto](https://github.com/HormigaArgentina)
 
 ## Descripcion
 
