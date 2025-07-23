@@ -4,19 +4,14 @@ Tecnologica Nacional Facultad Regional Paraná
 
 Titulo de Tesis: "Utilización de Inteligencia Artificial para la estimación de la actividad forrajera de las hormigas cortadoras de hojas"
 
-### Autores
-* [Vinzon, Eric Alan](https://github.com/Alanv3514)
-* [Quiroga, Agustin](https://github.com/quiro1297)
-### Director de tesis
-* Maggiolini, Lucas
-### Co-Director de tesis
-* [Sabattini, Julián Alberto](https://github.com/HormigaArgentina)
+Informe: [./Informe Proyecto Final_QUIROGA-VINZON.pdf](https://github.com/Alanv3514/Antnalyzer/blob/master/Informe%20Proyecto%20Final_QUIROGA-VINZON.pdf)
+
+Guia de creacion de modelo:[./guia-creacion-modelo.pdf](https://github.com/Alanv3514/Antnalyzer/blob/master/documentacion%20extra/guia-creacion-modelo.pdf)
 
 ## Descripcion
-
-Seguimiento de cargas llevadas por hormigas hacia su propio hormiguero. 
+Se desarrolló un sistema automatizado con el fin de lograr el seguimiento y análisis de comportamiento forrajero de hormigas cortadoras de hojas.
 Desarrollado en python 3.9.16. 
-Deteccioón de carga realizada con la ayuda de YOLOv8. 
+Detección de carga realizada con la ayuda de YOLOv8. 
 Trackeo realizado con un algoritmo trigonometrico.
 
 ## Ejecución del proyecto
@@ -39,6 +34,16 @@ Luego de instalar Anaconda3 y haber reiniciado la pc:
 
 Encontrarán la última versión en:
 https://github.com/Alanv3514/Antnalyzer/releases
+
+## Autores
+### Desarrolladores
+* [Quiroga, Agustin (UTN FRP)](https://github.com/quiro1297)
+* [Vinzon, Eric Alan (UTN FRP)](https://github.com/Alanv3514)
+### Director de tesis
+* Ing. Maggiolini, Lucas (UTN FRP)
+### Co-Director de tesis
+* [Dr. Sabattini, Julián Alberto (UNER FCA)](https://github.com/HormigaArgentina)
+
 
 ## Licencia
 
